@@ -1,14 +1,22 @@
 import React, { useState } from "react";
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   const links = [
     { label: "Home", href: "/" },
     { label: "News", href: "/news" },
     { label: "Chat", href: "/chat" },
   ];
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login");
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full bg-white/95 backdrop-blur border-b border-slate-200">
@@ -55,18 +63,34 @@ export default function Navbar() {
 
           {/* CTA desktop */}
           <div className="hidden md:flex items-center gap-2">
-            <Link
-              to="/login"
-              className="px-4 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900 transition"
-            >
-              Login
-            </Link>
-            <Link
-              to="/login"
-              className="px-4 py-2 text-sm font-semibold text-white bg-slate-900 hover:bg-sky-500 hover:text-slate-900 rounded-md transition border-2 border-slate-900 hover:border-sky-500"
-            >
-              Registrati
-            </Link>
+            {user ? (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-slate-600 font-medium">
+                  {user.email}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-slate-900 hover:bg-red-500 rounded-md transition border-2 border-slate-900 hover:border-red-500"
+                >
+                  Esci
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Link
+                  to="/login"
+                  className="px-4 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900 transition"
+                >
+                  Login
+                </Link>
+                <Link
+                  to="/login"
+                  className="px-4 py-2 text-sm font-semibold text-white bg-slate-900 hover:bg-sky-500 hover:text-slate-900 rounded-md transition border-2 border-slate-900 hover:border-sky-500"
+                >
+                  Registrati
+                </Link>
+              </div>
+            )}
           </div>
 
           {/* Mobile toggle */}
@@ -98,12 +122,23 @@ export default function Navbar() {
               </Link>
             ))}
             <div className="flex gap-2 pt-2 px-3">
-              <Link to="/login" className="flex-1 py-2 text-sm font-semibold border border-slate-300 rounded-md text-center">
-                Login
-              </Link>
-              <Link to="/login" className="flex-1 py-2 text-sm font-semibold bg-slate-900 text-white rounded-md text-center">
-                Registrati
-              </Link>
+              {user ? (
+                <button
+                  onClick={handleLogout}
+                  className="flex-1 py-2 text-sm font-semibold bg-red-500 text-white rounded-md"
+                >
+                  Esci
+                </button>
+              ) : (
+                <>
+                  <Link to="/login" className="flex-1 py-2 text-sm font-semibold border border-slate-300 rounded-md text-center">
+                    Login
+                  </Link>
+                  <Link to="/login" className="flex-1 py-2 text-sm font-semibold bg-slate-900 text-white rounded-md text-center">
+                    Registrati
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         )}
