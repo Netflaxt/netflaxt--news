@@ -5,6 +5,7 @@ import News from './pages/News'
 import Login from './pages/Login'
 import Chat from './pages/Chat'
 import Admin from './pages/Admin'
+import Profile from './pages/Profile'
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/profile" element={<Profile />} />
       </Routes>
     </div>
   )

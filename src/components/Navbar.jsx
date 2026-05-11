@@ -67,9 +67,12 @@ export default function Navbar() {
           <div className="hidden md:flex items-center gap-2">
             {user ? (
               <div className="flex items-center gap-3">
-                <span className="text-sm text-slate-600 font-medium">
-                  {user.email}
-                </span>
+                <Link
+                  to="/profile"
+                  className="text-sm text-slate-600 font-medium hover:text-sky-600 transition"
+                >
+                  {user.displayName || user.email}
+                </Link>
                 {user.email === ADMIN_EMAIL && (
                   <Link
                     to="/admin"
@@ -134,6 +137,12 @@ export default function Navbar() {
             <div className="flex gap-2 pt-2 px-3">
               {user ? (
                 <>
+                  <Link
+                    to="/profile"
+                    className="flex-1 py-2 text-sm font-semibold border border-slate-300 rounded-md text-center text-slate-700"
+                  >
+                    Profilo
+                  </Link>
                   {user.email === ADMIN_EMAIL && (
                     <Link
                       to="/admin"
