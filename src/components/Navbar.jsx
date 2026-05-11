@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
+const ADMIN_EMAIL = "cretellamattia36@gmail.com";
+
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const { user, logout } = useAuth();
@@ -68,6 +70,14 @@ export default function Navbar() {
                 <span className="text-sm text-slate-600 font-medium">
                   {user.email}
                 </span>
+                {user.email === ADMIN_EMAIL && (
+                  <Link
+                    to="/admin"
+                    className="px-4 py-2 text-sm font-semibold text-sky-600 border border-sky-400 rounded-md hover:bg-sky-50 transition"
+                  >
+                    Admin
+                  </Link>
+                )}
                 <button
                   onClick={handleLogout}
                   className="px-4 py-2 text-sm font-semibold text-white bg-slate-900 hover:bg-red-500 rounded-md transition border-2 border-slate-900 hover:border-red-500"
@@ -123,12 +133,22 @@ export default function Navbar() {
             ))}
             <div className="flex gap-2 pt-2 px-3">
               {user ? (
-                <button
-                  onClick={handleLogout}
-                  className="flex-1 py-2 text-sm font-semibold bg-red-500 text-white rounded-md"
-                >
-                  Esci
-                </button>
+                <>
+                  {user.email === ADMIN_EMAIL && (
+                    <Link
+                      to="/admin"
+                      className="flex-1 py-2 text-sm font-semibold border border-sky-400 text-sky-600 rounded-md text-center"
+                    >
+                      Admin
+                    </Link>
+                  )}
+                  <button
+                    onClick={handleLogout}
+                    className="flex-1 py-2 text-sm font-semibold bg-red-500 text-white rounded-md"
+                  >
+                    Esci
+                  </button>
+                </>
               ) : (
                 <>
                   <Link to="/login" className="flex-1 py-2 text-sm font-semibold border border-slate-300 rounded-md text-center">

@@ -4,6 +4,7 @@ import Home from './pages/Home'
 import News from './pages/News'
 import Login from './pages/Login'
 import Chat from './pages/Chat'
+import Admin from './pages/Admin'
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
         <Route path="/news" element={<News />} />
         <Route path="/login" element={<Login />} />
         <Route path="/chat" element={<Chat />} />
+        <Route path="/admin" element={<Admin />} />
       </Routes>
     </div>
   )
