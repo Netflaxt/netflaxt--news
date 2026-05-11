@@ -1,9 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { auth, googleProvider } from "../firebase/firebase";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signInWithPopup
+  signInWithPopup,
 } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 
@@ -13,11 +13,19 @@ export default function Login() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [error, setError] = useState("");
   const [show, setShow] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const t = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(t);
+  }, []);
 
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     setError("");
+    setLoading(true);
     try {
       if (isRegistering) {
         await createUserWithEmailAndPassword(auth, email, password);
@@ -27,6 +35,8 @@ export default function Login() {
       navigate("/");
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -44,10 +54,14 @@ export default function Login() {
     <main className="min-h-screen bg-white grid lg:grid-cols-2">
       {/* LATO SX — Form */}
       <section className="flex items-center justify-center p-6 sm:p-12 order-2 lg:order-1">
-        <div className="w-full max-w-md">
-          <div className="inline-flex items-center gap-2 mb-12">
-            <div className="h-9 w-9 rounded-full bg-sky-400 ring-2 ring-slate-900 flex items-center justify-center">
-              <span className="text-slate-900 font-bold text-sm">NN</span>
+        <div
+          className={`w-full max-w-md transition-all duration-700 ${
+            mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
+          }`}
+        >
+          <div className="inline-flex items-center gap-3 mb-12">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-sky-300 to-sky-500 flex items-center justify-center shadow-sm shadow-sky-500/30">
+              <span className="text-white font-black text-sm">NN</span>
             </div>
             <span
               className="text-xl tracking-wide text-slate-900"
@@ -61,14 +75,14 @@ export default function Login() {
             {isRegistering ? "Nuovo account" : "Bentornato"}
           </div>
           <h1
-            className="mt-2 text-4xl sm:text-5xl text-slate-900 leading-none"
+            className="mt-2 text-4xl sm:text-5xl text-slate-900 leading-[0.95]"
             style={{ fontFamily: "'Bebas Neue', sans-serif" }}
           >
             {isRegistering ? "CREA IL TUO ACCOUNT." : "ACCEDI AL TUO ACCOUNT."}
           </h1>
 
           {error && (
-            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm animate-in">
               {error}
             </div>
           )}
@@ -84,7 +98,7 @@ export default function Login() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="tuonome@esempio.it"
                 required
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-md text-slate-900 placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 transition"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-md text-slate-900 placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 focus:bg-white transition-all duration-200"
               />
             </div>
 
@@ -99,12 +113,12 @@ export default function Login() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full px-4 py-3 pr-12 bg-slate-50 border border-slate-200 rounded-md text-slate-900 placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 transition"
+                  className="w-full px-4 py-3 pr-20 bg-slate-50 border border-slate-200 rounded-md text-slate-900 placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 focus:bg-white transition-all duration-200"
                 />
                 <button
                   type="button"
                   onClick={() => setShow(!show)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-500 hover:text-sky-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-sky-600 transition"
                 >
                   {show ? "Nascondi" : "Mostra"}
                 </button>
@@ -113,9 +127,13 @@ export default function Login() {
 
             <button
               type="submit"
-              className="w-full py-3 bg-slate-900 text-white font-bold rounded-md hover:bg-sky-500 hover:text-slate-900 transition"
+              disabled={loading}
+              className="group relative w-full py-3 bg-slate-900 text-white font-bold rounded-md overflow-hidden transition-all duration-300 hover:shadow-lg hover:shadow-slate-900/20 disabled:opacity-50"
             >
-              {isRegistering ? "Registrati" : "Entra"}
+              <span className="relative z-10 group-hover:text-slate-900 transition-colors duration-300">
+                {loading ? "Attendere..." : isRegistering ? "Registrati" : "Entra"}
+              </span>
+              <span className="absolute inset-0 bg-sky-400 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
             </button>
 
             <div className="relative my-2">
@@ -130,7 +148,7 @@ export default function Login() {
             <button
               type="button"
               onClick={handleGoogle}
-              className="w-full py-3 border border-slate-200 rounded-md font-semibold text-slate-700 hover:border-slate-400 transition flex items-center justify-center gap-2"
+              className="w-full py-3 border border-slate-200 rounded-md font-semibold text-slate-700 hover:border-slate-400 hover:bg-slate-50 transition-all duration-200 flex items-center justify-center gap-2 hover:-translate-y-0.5"
             >
               <span className="w-4 h-4 rounded-full bg-gradient-to-br from-red-500 via-yellow-400 to-blue-500" />
               Continua con Google
@@ -141,7 +159,7 @@ export default function Login() {
             {isRegistering ? "Hai già un account?" : "Non hai un account?"}{" "}
             <button
               onClick={() => setIsRegistering(!isRegistering)}
-              className="text-sky-600 font-semibold hover:underline"
+              className="text-sky-600 font-semibold hover:underline transition"
             >
               {isRegistering ? "Accedi →" : "Registrati →"}
             </button>
@@ -155,21 +173,51 @@ export default function Login() {
           <img
             src="https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=1200&q=80"
             alt=""
-            className="w-full h-full object-cover opacity-30"
+            className={`w-full h-full object-cover transition-all duration-[2000ms] ${
+              mounted ? "opacity-40 scale-100" : "opacity-0 scale-110"
+            }`}
           />
           <div className="absolute inset-0 bg-gradient-to-br from-sky-500/30 via-slate-900/80 to-slate-900" />
+          <div className="absolute -top-32 -right-32 w-[400px] h-[400px] rounded-full bg-sky-500/20 blur-3xl" />
         </div>
-        <div className="relative h-full flex flex-col justify-center p-8 sm:p-12 lg:p-16">
+        <div
+          className={`relative h-full flex flex-col justify-center p-8 sm:p-12 lg:p-16 transition-all duration-1000 delay-300 ${
+            mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+          }`}
+        >
+          <div className="text-[11px] uppercase tracking-[0.3em] text-sky-300 font-semibold mb-6">
+            Fan site indipendente
+          </div>
           <h2
-            className="text-4xl sm:text-5xl lg:text-6xl leading-[0.95] text-white"
+            className="text-4xl sm:text-5xl lg:text-6xl leading-[0.95] text-white text-balance"
             style={{ fontFamily: "'Bebas Neue', sans-serif" }}
           >
             UNA <span className="text-sky-300">CURVA</span> <br />
             CHE NON DORME <br /> MAI.
           </h2>
-          <p className="mt-6 max-w-md text-slate-300">
-            Migliaia di tifosi connessi 24/7. News, pronostici e chat live.
+          <p className="mt-6 max-w-md text-slate-300 leading-relaxed">
+            Migliaia di tifosi connessi 24/7. News, pronostici e chat live — solo per chi
+            crede al biancoceleste.
           </p>
+          <div className="mt-10 flex gap-8">
+            {[
+              { n: "12k+", l: "Tifosi" },
+              { n: "340", l: "Articoli/mese" },
+              { n: "24/7", l: "Live" },
+            ].map((s) => (
+              <div key={s.l} className="border-l-2 border-sky-400/60 pl-3">
+                <div
+                  className="text-2xl text-white"
+                  style={{ fontFamily: "'Bebas Neue', sans-serif" }}
+                >
+                  {s.n}
+                </div>
+                <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                  {s.l}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
     </main>
