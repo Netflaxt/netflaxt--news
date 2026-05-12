@@ -37,6 +37,20 @@ export default function Navbar() {
   const isActive = (href) =>
     href === "/" ? location.pathname === "/" : location.pathname.startsWith(href);
 
+  const Avatar = ({ size = "h-7 w-7" }) => (
+    user.photoURL ? (
+      <img
+        src={user.photoURL}
+        alt="avatar"
+        className={`${size} rounded-full object-cover ring-2 ring-sky-400`}
+      />
+    ) : (
+      <span className={`${size} rounded-full bg-gradient-to-br from-sky-300 to-sky-500 flex items-center justify-center text-[10px] font-black text-white`}>
+        {(user.displayName || user.email).slice(0, 2).toUpperCase()}
+      </span>
+    )
+  );
+
   return (
     <header
       className={`sticky top-0 z-50 w-full transition-all duration-300 ${
@@ -104,9 +118,7 @@ export default function Navbar() {
                   to="/profile"
                   className="flex items-center gap-2 px-3 py-1.5 rounded-full hover:bg-slate-100 transition group"
                 >
-                  <span className="h-7 w-7 rounded-full bg-gradient-to-br from-sky-300 to-sky-500 flex items-center justify-center text-[10px] font-black text-white">
-                    {(user.displayName || user.email).slice(0, 2).toUpperCase()}
-                  </span>
+                  <Avatar size="h-7 w-7" />
                   <span className="text-sm text-slate-700 font-medium group-hover:text-sky-600 transition max-w-[140px] truncate">
                     {user.displayName || user.email}
                   </span>
@@ -154,31 +166,15 @@ export default function Navbar() {
             aria-label="Apri menu"
           >
             <div className="w-6 h-6 relative">
-              <span
-                className={`absolute left-0 top-1.5 h-0.5 w-6 bg-slate-900 transition-all duration-300 ${
-                  open ? "rotate-45 translate-y-1.5" : ""
-                }`}
-              />
-              <span
-                className={`absolute left-0 top-3 h-0.5 w-6 bg-slate-900 transition-all duration-200 ${
-                  open ? "opacity-0" : ""
-                }`}
-              />
-              <span
-                className={`absolute left-0 top-[18px] h-0.5 w-6 bg-slate-900 transition-all duration-300 ${
-                  open ? "-rotate-45 -translate-y-1.5" : ""
-                }`}
-              />
+              <span className={`absolute left-0 top-1.5 h-0.5 w-6 bg-slate-900 transition-all duration-300 ${open ? "rotate-45 translate-y-1.5" : ""}`} />
+              <span className={`absolute left-0 top-3 h-0.5 w-6 bg-slate-900 transition-all duration-200 ${open ? "opacity-0" : ""}`} />
+              <span className={`absolute left-0 top-[18px] h-0.5 w-6 bg-slate-900 transition-all duration-300 ${open ? "-rotate-45 -translate-y-1.5" : ""}`} />
             </div>
           </button>
         </div>
 
         {/* Mobile menu */}
-        <div
-          className={`md:hidden overflow-hidden transition-all duration-300 ease-out ${
-            open ? "max-h-[500px] pb-4" : "max-h-0"
-          }`}
-        >
+        <div className={`md:hidden overflow-hidden transition-all duration-300 ease-out ${open ? "max-h-[500px] pb-4" : "max-h-0"}`}>
           <div className="border-t border-slate-200 pt-3 space-y-1">
             {links.map((l, i) => {
               const active = isActive(l.href);
@@ -191,9 +187,7 @@ export default function Navbar() {
                       ? "bg-sky-50 text-sky-700 border-l-2 border-sky-400 pl-3.5"
                       : "text-slate-700 hover:bg-slate-50 hover:text-sky-700"
                   }`}
-                  style={{
-                    transitionDelay: open ? `${i * 30}ms` : "0ms",
-                  }}
+                  style={{ transitionDelay: open ? `${i * 30}ms` : "0ms" }}
                 >
                   {l.label}
                 </Link>
@@ -204,8 +198,9 @@ export default function Navbar() {
                 <>
                   <Link
                     to="/profile"
-                    className="flex-1 py-2.5 text-sm font-semibold border border-slate-300 rounded-md text-center text-slate-700 hover:bg-slate-50 transition"
+                    className="flex-1 py-2.5 text-sm font-semibold border border-slate-300 rounded-md text-center text-slate-700 hover:bg-slate-50 transition flex items-center justify-center gap-2"
                   >
+                    <Avatar size="h-5 w-5" />
                     Profilo
                   </Link>
                   {user.email === ADMIN_EMAIL && (
@@ -225,16 +220,10 @@ export default function Navbar() {
                 </>
               ) : (
                 <>
-                  <Link
-                    to="/login"
-                    className="flex-1 py-2.5 text-sm font-semibold border border-slate-300 rounded-md text-center hover:bg-slate-50 transition"
-                  >
+                  <Link to="/login" className="flex-1 py-2.5 text-sm font-semibold border border-slate-300 rounded-md text-center hover:bg-slate-50 transition">
                     Accedi
                   </Link>
-                  <Link
-                    to="/login"
-                    className="flex-1 py-2.5 text-sm font-semibold bg-slate-900 text-white rounded-md text-center hover:bg-sky-500 hover:text-slate-900 transition"
-                  >
+                  <Link to="/login" className="flex-1 py-2.5 text-sm font-semibold bg-slate-900 text-white rounded-md text-center hover:bg-sky-500 hover:text-slate-900 transition">
                     Registrati
                   </Link>
                 </>

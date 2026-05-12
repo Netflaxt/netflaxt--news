@@ -10,7 +10,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
+      setUser(currentUser ? { ...currentUser } : null);
       setLoading(false);
     });
     return unsubscribe;
@@ -18,8 +18,15 @@ export function AuthProvider({ children }) {
 
   const logout = () => signOut(auth);
 
+  const refreshUser = async () => {
+    if (auth.currentUser) {
+      await auth.currentUser.reload();
+      setUser({ ...auth.currentUser });
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, logout }}>
+    <AuthContext.Provider value={{ user, loading, logout, refreshUser }}>
       {!loading && children}
     </AuthContext.Provider>
   );
