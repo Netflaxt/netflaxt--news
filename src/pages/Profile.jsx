@@ -7,6 +7,7 @@ import {
   updatePassword,
   EmailAuthProvider,
   reauthenticateWithCredential,
+  verifyBeforeUpdateEmail,
 } from "firebase/auth";
 import axios from "axios";
 
@@ -157,13 +158,7 @@ export default function Profile() {
                     </svg>
                   )}
                 </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handlePhotoChange}
-                />
+                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
               </div>
 
               {isGoogleUser && (
@@ -182,7 +177,6 @@ export default function Profile() {
             )}
 
             <p className="text-xs text-slate-400 mb-3">Clicca sulla foto per cambiarla</p>
-
             <div className="text-xs uppercase tracking-[0.3em] text-sky-500 font-semibold">Il tuo profilo</div>
             <h1 className="mt-1 text-4xl text-slate-900" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>
               {user.displayName || "Utente"}
@@ -213,21 +207,29 @@ export default function Profile() {
           )}
 
           <form onSubmit={handleUpdateName} className="space-y-4">
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Il tuo nome"
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-md text-slate-900 placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 focus:bg-white transition-all duration-200"
-            />
+            <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Il tuo nome" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-md text-slate-900 placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 focus:bg-white transition-all duration-200" />
             <button type="submit" disabled={loadingName} className="group relative px-6 py-3 bg-slate-900 text-white font-bold rounded-md overflow-hidden transition-all duration-300 hover:shadow-lg disabled:opacity-50">
-              <span className="relative z-10 group-hover:text-slate-900 transition-colors duration-300">
-                {loadingName ? "Salvataggio..." : "Salva nome"}
-              </span>
+              <span className="relative z-10 group-hover:text-slate-900 transition-colors duration-300">{loadingName ? "Salvataggio..." : "Salva nome"}</span>
               <span className="absolute inset-0 bg-sky-400 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
             </button>
           </form>
         </div>
+
+        {/* Modifica email — solo utenti email */}
+        {!isGoogleUser && (
+          <div className={`bg-white rounded-2xl border border-slate-200 p-8 shadow-sm transition-all duration-700 ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`} style={{ transitionDelay: "180ms" }}>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-lg bg-sky-50 border border-sky-100 flex items-center justify-center">
+                <svg className="w-5 h-5 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                </svg>
+              </div>
+              <h2 className="text-2xl text-slate-900" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>Modifica email</h2>
+            </div>
+            <p className="text-sm text-slate-500 mb-4">Riceverai una email di verifica al nuovo indirizzo prima che la modifica diventi effettiva.</p>
+            <EmailChangeForm user={user} />
+          </div>
+        )}
 
         {/* Cambio password — solo utenti email */}
         {!isGoogleUser && (
@@ -256,9 +258,7 @@ export default function Profile() {
               <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Password attuale" required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-md text-slate-900 placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 focus:bg-white transition-all duration-200" />
               <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Nuova password (min. 6 caratteri)" required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-md text-slate-900 placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 focus:bg-white transition-all duration-200" />
               <button type="submit" disabled={loadingPassword} className="group relative px-6 py-3 bg-slate-900 text-white font-bold rounded-md overflow-hidden transition-all duration-300 hover:shadow-lg disabled:opacity-50">
-                <span className="relative z-10 group-hover:text-slate-900 transition-colors duration-300">
-                  {loadingPassword ? "Aggiornamento..." : "Cambia password"}
-                </span>
+                <span className="relative z-10 group-hover:text-slate-900 transition-colors duration-300">{loadingPassword ? "Aggiornamento..." : "Cambia password"}</span>
                 <span className="absolute inset-0 bg-sky-400 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
               </button>
             </form>
@@ -267,5 +267,55 @@ export default function Profile() {
 
       </div>
     </main>
+  );
+}
+
+function EmailChangeForm({ user }) {
+  const [newEmail, setNewEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    setSuccess(false);
+    try {
+      const credential = EmailAuthProvider.credential(user.email, password);
+      await reauthenticateWithCredential(auth.currentUser, credential);
+      await verifyBeforeUpdateEmail(auth.currentUser, newEmail);
+      setSuccess(true);
+      setNewEmail("");
+      setPassword("");
+      setTimeout(() => setSuccess(false), 5000);
+    } catch (err) {
+      if (err.code === "auth/wrong-password") setError("Password non corretta.");
+      else if (err.code === "auth/email-already-in-use") setError("Email già in uso da un altro account.");
+      else setError("Errore. Riprova.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {success && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-md text-emerald-700 text-sm font-semibold flex items-center gap-2">
+          <span className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs">✓</span>
+          Email di verifica inviata. Controlla la nuova casella e clicca il link per confermare.
+        </div>
+      )}
+      {error && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">{error}</div>
+      )}
+      <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Nuova email" required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-md text-slate-900 placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 focus:bg-white transition-all duration-200" />
+      <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Conferma la tua password attuale" required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-md text-slate-900 placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 focus:bg-white transition-all duration-200" />
+      <button type="submit" disabled={loading} className="group relative px-6 py-3 bg-slate-900 text-white font-bold rounded-md overflow-hidden transition-all duration-300 hover:shadow-lg disabled:opacity-50">
+        <span className="relative z-10 group-hover:text-slate-900 transition-colors duration-300">{loading ? "Aggiornamento..." : "Aggiorna email"}</span>
+        <span className="absolute inset-0 bg-sky-400 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+      </button>
+    </form>
   );
 }
