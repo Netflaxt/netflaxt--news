@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Navigate } from "react-router-dom";
-import { auth } from "../firebase/firebase";
+import { auth, db } from "../firebase/firebase";
 import {
   updateProfile,
   updatePassword,
@@ -9,10 +9,18 @@ import {
   reauthenticateWithCredential,
   verifyBeforeUpdateEmail,
 } from "firebase/auth";
+import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
 import axios from "axios";
+import i18n from "../i18n/index.js";
 
 const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+const LANGUAGES = [
+  { code: "it", label: "🇮🇹 Italiano" },
+  { code: "en", label: "🇬🇧 English" },
+  { code: "es", label: "🇪🇸 Español" },
+];
 
 export default function Profile() {
   const { user, loading, refreshUser } = useAuth();
@@ -30,10 +38,40 @@ export default function Profile() {
   const [mounted, setMounted] = useState(false);
   const fileInputRef = useRef(null);
 
+  const [username, setUsername] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [language, setLanguage] = useState("it");
+  const [loadingUserData, setLoadingUserData] = useState(true);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [successProfile, setSuccessProfile] = useState(false);
+  const [errorProfile, setErrorProfile] = useState("");
+
   useEffect(() => {
     const t = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(t);
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const loadUserData = async () => {
+      try {
+        const snap = await getDoc(doc(db, "users", user.uid));
+        if (snap.exists()) {
+          const data = snap.data();
+          setUsername(data.username || "");
+          setFirstName(data.firstName || "");
+          setLastName(data.lastName || "");
+          setLanguage(data.language || "it");
+        }
+      } catch (e) {
+        console.error("Errore caricamento dati utente:", e);
+      } finally {
+        setLoadingUserData(false);
+      }
+    };
+    loadUserData();
+  }, [user]);
 
   if (loading) return null;
   if (!user) return <Navigate to="/login" />;
@@ -46,10 +84,8 @@ export default function Profile() {
   const handlePhotoChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     const localUrl = URL.createObjectURL(file);
     setPhotoPreview(localUrl);
-
     setLoadingPhoto(true);
     setSuccessPhoto(false);
     try {
@@ -57,12 +93,10 @@ export default function Profile() {
       formData.append("file", file);
       formData.append("upload_preset", UPLOAD_PRESET);
       formData.append("folder", "netflaxt/avatars");
-
       const res = await axios.post(
         `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
         formData
       );
-
       const photoURL = res.data.secure_url;
       await updateProfile(auth.currentUser, { photoURL });
       await refreshUser();
@@ -114,6 +148,58 @@ export default function Profile() {
       }
     } finally {
       setLoadingPassword(false);
+    }
+  };
+
+  const handleLanguageChange = (e) => {
+    const lang = e.target.value;
+    setLanguage(lang);
+    i18n.changeLanguage(lang);
+    localStorage.setItem("netflaxt_lang", lang);
+  };
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    setSavingProfile(true);
+    setErrorProfile("");
+    setSuccessProfile(false);
+
+    if (username) {
+      const usernameRegex = /^[a-zA-Z0-9._]{3,20}$/;
+      if (!usernameRegex.test(username)) {
+        setErrorProfile("Username: solo lettere, numeri, punti e underscore (3-20 caratteri).");
+        setSavingProfile(false);
+        return;
+      }
+      try {
+        const q = query(collection(db, "users"), where("username", "==", username.toLowerCase()));
+        const snap = await getDocs(q);
+        const takenByOther = snap.docs.some((d) => d.id !== user.uid);
+        if (takenByOther) {
+          setErrorProfile("Username già in uso. Scegline un altro.");
+          setSavingProfile(false);
+          return;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    try {
+      await setDoc(doc(db, "users", user.uid), {
+        username: username.toLowerCase(),
+        firstName,
+        lastName,
+        language,
+        email: user.email,
+        updatedAt: new Date(),
+      }, { merge: true });
+      setSuccessProfile(true);
+      setTimeout(() => setSuccessProfile(false), 3000);
+    } catch (e) {
+      setErrorProfile("Errore nel salvataggio. Riprova.");
+    } finally {
+      setSavingProfile(false);
     }
   };
 
@@ -181,11 +267,113 @@ export default function Profile() {
             <h1 className="mt-1 text-4xl text-slate-900" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>
               {user.displayName || "Utente"}
             </h1>
+            {username && (
+              <p className="text-sky-500 text-sm font-semibold mt-0.5">@{username}</p>
+            )}
             <p className="text-slate-500 text-sm mt-1">{user.email}</p>
             {memberSince && (
               <p className="text-xs text-slate-400 mt-2 uppercase tracking-wider">Membro da {memberSince}</p>
             )}
           </div>
+        </div>
+
+        {/* Username, nome, cognome, lingua */}
+        <div className={`bg-white rounded-2xl border border-slate-200 p-8 shadow-sm transition-all duration-700 ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`} style={{ transitionDelay: "60ms" }}>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-lg bg-sky-50 border border-sky-100 flex items-center justify-center">
+              <svg className="w-5 h-5 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl text-slate-900" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>Informazioni profilo</h2>
+          </div>
+
+          {loadingUserData ? (
+            <div className="flex justify-center py-6">
+              <div className="w-6 h-6 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : (
+            <form onSubmit={handleSaveProfile} className="space-y-4">
+              {successProfile && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-md text-emerald-700 text-sm font-semibold flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs">✓</span>
+                  Profilo aggiornato con successo!
+                </div>
+              )}
+              {errorProfile && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">{errorProfile}</div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Username</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-semibold text-sm">@</span>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s/g, ""))}
+                    placeholder="il_tuo_username"
+                    maxLength={20}
+                    className="w-full pl-7 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-md text-slate-900 placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 focus:bg-white transition-all duration-200"
+                  />
+                </div>
+                <p className="mt-1 text-xs text-slate-400">Lettere, numeri, punti e underscore. 3-20 caratteri.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                    Nome <span className="text-slate-400 font-normal normal-case">(opzionale)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="Es. Mario"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-md text-slate-900 placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 focus:bg-white transition-all duration-200"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                    Cognome <span className="text-slate-400 font-normal normal-case">(opzionale)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Es. Rossi"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-md text-slate-900 placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 focus:bg-white transition-all duration-200"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                  Lingua preferita
+                </label>
+                <select
+                  value={language}
+                  onChange={handleLanguageChange}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-md text-slate-900 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 focus:bg-white transition-all duration-200"
+                >
+                  {LANGUAGES.map((l) => (
+                    <option key={l.code} value={l.code}>{l.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                type="submit"
+                disabled={savingProfile}
+                className="group relative px-6 py-3 bg-slate-900 text-white font-bold rounded-md overflow-hidden transition-all duration-300 hover:shadow-lg disabled:opacity-50"
+              >
+                <span className="relative z-10 group-hover:text-slate-900 transition-colors duration-300">
+                  {savingProfile ? "Salvataggio..." : "Salva profilo"}
+                </span>
+                <span className="absolute inset-0 bg-sky-400 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+              </button>
+            </form>
+          )}
         </div>
 
         {/* Modifica nome */}

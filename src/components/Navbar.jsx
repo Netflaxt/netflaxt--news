@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useTranslation } from "react-i18next";
 
 const ADMIN_EMAIL = "cretellamattia36@gmail.com";
 
@@ -10,12 +11,13 @@ export default function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { t, i18n: i18nInstance } = useTranslation();
 
   const links = [
-    { label: "Home", href: "/" },
-    { label: "News", href: "/news" },
-    { label: "Chat", href: "/chat" },
-    { label: "Chi sono", href: "/about" },
+    { label: t("nav.home"), href: "/" },
+    { label: t("nav.news"), href: "/news" },
+    { label: t("nav.chat"), href: "/chat" },
+    { label: t("nav.about"), href: "/about" },
   ];
 
   useEffect(() => {
@@ -28,6 +30,8 @@ export default function Navbar() {
   useEffect(() => {
     setOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {}, [i18nInstance.language]);
 
   const handleLogout = async () => {
     await logout();
@@ -66,10 +70,12 @@ export default function Navbar() {
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3 group">
             <div className="relative">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-sky-300 to-sky-500 flex items-center justify-center ring-1 ring-slate-900/10 shadow-sm shadow-sky-500/30 group-hover:shadow-md group-hover:shadow-sky-500/40 group-hover:scale-105 transition-all duration-300">
-                <span className="text-white font-black text-sm tracking-tighter drop-shadow-sm">
-                  NN
-                </span>
+              <div className="h-10 w-10 rounded-full overflow-hidden group-hover:scale-105 transition-all duration-300">
+                <img
+                  src="/logo.png"
+                  alt="Netflaxt News"
+                  className="w-full h-full object-contain"
+                />
               </div>
               <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white animate-pulse" />
             </div>
@@ -128,14 +134,14 @@ export default function Navbar() {
                     to="/admin"
                     className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-sky-700 bg-sky-50 border border-sky-200 rounded-md hover:bg-sky-100 hover:border-sky-300 transition"
                   >
-                    Admin
+                    {t("nav.admin")}
                   </Link>
                 )}
                 <button
                   onClick={handleLogout}
                   className="px-4 py-2 text-sm font-semibold text-slate-700 hover:text-white hover:bg-slate-900 border border-slate-200 hover:border-slate-900 rounded-md transition-all duration-200"
                 >
-                  Esci
+                  {t("nav.logout")}
                 </button>
               </div>
             ) : (
@@ -144,14 +150,14 @@ export default function Navbar() {
                   to="/login"
                   className="px-4 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900 transition"
                 >
-                  Accedi
+                  {t("nav.login")}
                 </Link>
                 <Link
                   to="/login"
                   className="relative px-4 py-2 text-sm font-bold text-white bg-slate-900 rounded-md overflow-hidden group transition-all duration-300 hover:shadow-lg hover:shadow-sky-500/30"
                 >
                   <span className="relative z-10 group-hover:text-slate-900 transition-colors duration-300">
-                    Registrati
+                    {t("nav.register")}
                   </span>
                   <span className="absolute inset-0 bg-sky-400 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
                 </Link>
@@ -201,30 +207,30 @@ export default function Navbar() {
                     className="flex-1 py-2.5 text-sm font-semibold border border-slate-300 rounded-md text-center text-slate-700 hover:bg-slate-50 transition flex items-center justify-center gap-2"
                   >
                     <Avatar size="h-5 w-5" />
-                    Profilo
+                    {t("nav.profile")}
                   </Link>
                   {user.email === ADMIN_EMAIL && (
                     <Link
                       to="/admin"
                       className="flex-1 py-2.5 text-sm font-semibold border border-sky-400 bg-sky-50 text-sky-700 rounded-md text-center hover:bg-sky-100 transition"
                     >
-                      Admin
+                      {t("nav.admin")}
                     </Link>
                   )}
                   <button
                     onClick={handleLogout}
                     className="flex-1 py-2.5 text-sm font-semibold bg-slate-900 text-white rounded-md hover:bg-red-600 transition"
                   >
-                    Esci
+                    {t("nav.logout")}
                   </button>
                 </>
               ) : (
                 <>
                   <Link to="/login" className="flex-1 py-2.5 text-sm font-semibold border border-slate-300 rounded-md text-center hover:bg-slate-50 transition">
-                    Accedi
+                    {t("nav.login")}
                   </Link>
                   <Link to="/login" className="flex-1 py-2.5 text-sm font-semibold bg-slate-900 text-white rounded-md text-center hover:bg-sky-500 hover:text-slate-900 transition">
-                    Registrati
+                    {t("nav.register")}
                   </Link>
                 </>
               )}
