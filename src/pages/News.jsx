@@ -39,18 +39,9 @@ export default function News() {
       <section className="relative border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-sky-50/50 overflow-hidden">
         <div className="absolute -top-32 -right-20 w-[400px] h-[400px] rounded-full bg-sky-200/40 blur-3xl" />
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-14">
-          <div
-            className={`transition-all duration-700 ${
-              mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
-            }`}
-          >
-            <div className="text-xs uppercase tracking-[0.3em] text-sky-500 font-semibold">
-              Archivio
-            </div>
-            <h1
-              className="mt-2 text-5xl sm:text-6xl text-slate-900 leading-none"
-              style={{ fontFamily: "'Bebas Neue', sans-serif" }}
-            >
+          <div className={`transition-all duration-700 ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+            <div className="text-xs uppercase tracking-[0.3em] text-sky-500 font-semibold">Archivio</div>
+            <h1 className="mt-2 text-5xl sm:text-6xl text-slate-900 leading-none" style={{ fontFamily: "'Bebas Neue', sans-serif" }}>
               Tutte le <span className="text-sky-500">News</span>
             </h1>
             <p className="mt-3 text-slate-600 max-w-2xl text-pretty">
@@ -95,60 +86,65 @@ export default function News() {
             <p className="text-slate-500 font-medium">Nessun articolo trovato in questa categoria.</p>
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filtered.map((a, i) => (
               <article
                 key={a.id}
-                className={`group flex flex-col transition-all duration-700 ${
+                className={`group flex flex-col bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-500 ${
                   mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
                 }`}
                 style={{ transitionDelay: `${i * 80}ms` }}
               >
+                {/* Immagine quadrata grande */}
                 <Link to={`/news/${a.id}`} className="block">
-                  <div className="relative overflow-hidden rounded-lg aspect-[4/3] mb-4 ring-1 ring-slate-200">
+                  <div className="relative overflow-hidden aspect-square">
                     <img
-                      src={
-                        a.imageUrl ||
-                        "https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=800&q=80"
-                      }
+                      src={a.imageUrl || "https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=800&q=80"}
                       alt={a.title}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                    <span className="absolute top-3 left-3 px-2 py-1 bg-sky-400 text-slate-900 text-[10px] font-bold uppercase tracking-widest rounded">
-                      {a.category}
-                    </span>
-                    {a.featured && (
-                      <span className="absolute top-3 right-3 px-2 py-1 bg-slate-900 text-white text-[10px] font-bold uppercase tracking-widest rounded">
-                        ★ Top
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/70 via-slate-900/20 to-transparent" />
+                    <div className="absolute top-3 left-3 flex gap-2">
+                      <span className="px-2 py-1 bg-sky-400 text-slate-900 text-[10px] font-bold uppercase tracking-widest rounded">
+                        {a.category}
                       </span>
-                    )}
+                      {a.featured && (
+                        <span className="px-2 py-1 bg-slate-900 text-white text-[10px] font-bold uppercase tracking-widest rounded">
+                          ★ Top
+                        </span>
+                      )}
+                    </div>
+                    <div className="absolute bottom-0 left-0 right-0 p-4">
+                      <h3 className="text-white font-bold text-lg leading-snug text-pretty line-clamp-2 drop-shadow">
+                        {a.title}
+                      </h3>
+                    </div>
                   </div>
                 </Link>
-                <div className="text-xs text-slate-500 uppercase tracking-wider mb-2">
-                  {a.date?.toDate?.()?.toLocaleDateString("it-IT") || ""}
-                </div>
-                <Link to={`/news/${a.id}`}>
-                  <h3 className="text-lg font-semibold text-slate-900 group-hover:text-sky-600 transition-colors duration-300 leading-snug text-pretty">
-                    {a.title}
-                  </h3>
-                </Link>
-                <p className="mt-2 text-sm text-slate-600 leading-relaxed line-clamp-3">
-                  {a.excerpt}
-                </p>
-                <div className="mt-4 flex items-center justify-between">
-                  <div className="text-xs text-slate-500">
-                    di <span className="font-semibold text-slate-700">{a.author}</span>
+
+                {/* Contenuto sotto immagine */}
+                <div className="p-4 flex flex-col flex-1">
+                  <p className="text-sm text-slate-600 leading-relaxed line-clamp-2 flex-1">
+                    {a.excerpt}
+                  </p>
+                  <div className="mt-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs text-slate-400 uppercase tracking-wider">
+                        {a.date?.toDate?.()?.toLocaleDateString("it-IT") || ""}
+                      </div>
+                      <span className="text-slate-300">·</span>
+                      <div className="text-xs text-slate-500">
+                        di <span className="font-semibold text-slate-700">{a.author}</span>
+                      </div>
+                    </div>
+                    <Link
+                      to={`/news/${a.id}`}
+                      className="group/btn inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-sky-600 hover:text-sky-700 transition"
+                    >
+                      Leggi
+                      <span className="inline-block transition-transform duration-300 group-hover/btn:translate-x-0.5">→</span>
+                    </Link>
                   </div>
-                  <Link
-                    to={`/news/${a.id}`}
-                    className="group/btn inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-sky-600 hover:text-sky-700 transition"
-                  >
-                    Vedi dettagli
-                    <span className="inline-block transition-transform duration-300 group-hover/btn:translate-x-0.5">
-                      →
-                    </span>
-                  </Link>
                 </div>
               </article>
             ))}
