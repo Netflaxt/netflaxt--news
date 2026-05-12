@@ -14,9 +14,9 @@ export default function Footer() {
           {/* Brand */}
           <div className="md:col-span-5">
             <Link to="/" className="inline-flex items-center gap-3 group">
-              <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-sky-300 to-sky-500 flex items-center justify-center shadow-lg shadow-sky-500/20 group-hover:scale-105 transition-transform duration-300">
-                <span className="text-white font-black text-sm">NN</span>
-              </div>
+              <div className="h-11 w-11 rounded-full overflow-hidden group-hover:scale-105 transition-transform duration-300">
+                <img src="/logo.png" alt="Netflaxt News" className="w-full h-full object-contain" />
+            </div>
               <div>
                 <div
                   className="text-2xl text-white tracking-wide"
