@@ -107,17 +107,54 @@ function scheduleFields(fm) {
   };
 }
 
-/* ── Fetch dei match dall'API ─────────────────────────────────── */
-async function fetchMatches() {
-  const url = `${API_BASE}/competitions/${COMPETITION_CODE}/matches?season=${SEASON}`;
-  console.log(`→ GET ${url}`);
-  const res = await fetch(url, { headers: { "X-Auth-Token": FD_TOKEN } });
+/* ── Fetch dall'API (con diagnostica robusta) ─────────────────── */
+async function api(path) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { "X-Auth-Token": FD_TOKEN },
+  });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`football-data.org HTTP ${res.status} ${res.statusText} — ${body.slice(0, 300)}`);
+    const err = new Error(`HTTP ${res.status} ${res.statusText} — ${body.slice(0, 200)}`);
+    err.status = res.status;
+    throw err;
   }
-  const data = await res.json();
-  return Array.isArray(data.matches) ? data.matches : [];
+  return res.json();
+}
+
+// Scopre qual è la stagione "corrente" che l'API espone per la Serie A
+async function discoverCurrentSeason() {
+  try {
+    const comp = await api(`/competitions/${COMPETITION_CODE}`);
+    const cs = comp.currentSeason;
+    const year = cs?.startDate ? new Date(cs.startDate).getFullYear() : null;
+    console.log(
+      `   Stagione corrente su football-data: ${
+        year ? `${year}/${year + 1}` : "?"
+      } (${cs?.startDate || "?"} → ${cs?.endDate || "?"})`
+    );
+    return year;
+  } catch (e) {
+    console.warn(`   (impossibile leggere la stagione corrente: ${e.message})`);
+    return null;
+  }
+}
+
+// Prende i match: prima prova la stagione richiesta, se l'API risponde
+// 404/403 ripiega sulla stagione corrente (sempre permessa sul piano free)
+async function fetchSeasonMatches(season) {
+  try {
+    const data = await api(`/competitions/${COMPETITION_CODE}/matches?season=${season}`);
+    return { matches: data.matches || [], via: `season=${season}` };
+  } catch (e) {
+    if (e.status === 404 || e.status === 403) {
+      console.log(
+        `   La stagione ${season} non è interrogabile direttamente (HTTP ${e.status}). Provo con la stagione corrente…`
+      );
+      const data = await api(`/competitions/${COMPETITION_CODE}/matches`);
+      return { matches: data.matches || [], via: "stagione corrente" };
+    }
+    throw e;
+  }
 }
 
 /* ── Confronto: c'è davvero qualcosa di cambiato? ─────────────── */
@@ -154,13 +191,39 @@ function fmtDate(ts) {
 
 /* ── Main ─────────────────────────────────────────────────────── */
 async function main() {
-  console.log(`\n🦅 Sync calendario "${TEAM}" · Serie A stagione ${SEASON}/${Number(SEASON) + 1}`);
+  console.log(
+    `\n🦅 Sync calendario "${TEAM}" · Serie A · stagione richiesta ${SEASON}/${Number(SEASON) + 1}`
+  );
 
-  const all = await fetchMatches();
-  console.log(`   Ricevuti ${all.length} match di Serie A dall'API.`);
+  const curYear = await discoverCurrentSeason();
+  const { matches: all, via } = await fetchSeasonMatches(SEASON);
+  console.log(`   Ricevuti ${all.length} match (${via}).`);
   if (all.length === 0) {
     console.warn(
-      "⚠️  Nessun match restituito. Possibile causa: la stagione richiesta non è ancora disponibile sul piano free, o SEASON errata. Nessuna scrittura."
+      "⚠️  Nessun match restituito. La stagione potrebbe non essere ancora pubblicata. Nessuna scrittura."
+    );
+    return;
+  }
+
+  // Che stagione abbiamo davvero ricevuto?
+  const loadedYear = all[0]?.season?.startDate
+    ? new Date(all[0].season.startDate).getFullYear()
+    : curYear;
+  console.log(
+    `   Stagione dei dati ricevuti: ${loadedYear ? `${loadedYear}/${loadedYear + 1}` : "?"}`
+  );
+
+  // Se NON è la stagione che vogliamo, non scriviamo nulla (per non
+  // caricare partite vecchie). Messaggio chiaro per capire il perché.
+  if (loadedYear != null && Number(SEASON) !== loadedYear) {
+    console.warn(
+      `\n⚠️  football-data.org espone ancora la stagione ${loadedYear}/${loadedYear + 1}, ` +
+        `non la ${SEASON}/${Number(SEASON) + 1} richiesta.`
+    );
+    console.warn(
+      "   Il calendario nuovo non è ancora disponibile su questa fonte (piano free).\n" +
+        "   Non scrivo nulla per non mettere partite della stagione sbagliata.\n" +
+        "   → Soluzioni: riprova tra qualche giorno, oppure imposta SEASON sulla stagione corrente.\n"
     );
     return;
   }
