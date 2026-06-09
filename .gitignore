@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Variabili d'ambiente — restano solo in locale (non sul repo pubblico)
+.env
+.env.*
+!.env.example
+
 # 🔐 Chiavi Firebase service account — NON committare MAI (vanno solo
 # nei GitHub Secrets). Qualsiasi file di questo tipo resta locale.
 *serviceAccount*.json
