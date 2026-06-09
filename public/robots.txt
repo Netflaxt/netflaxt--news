@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+# Sezioni riservate
+Disallow: /admin
+Disallow: /profile
+Disallow: /chat
+
+# Sitemap
+Sitemap: https://www.netflaxt.it/sitemap.xml

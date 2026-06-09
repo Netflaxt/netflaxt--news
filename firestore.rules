@@ -1,0 +1,135 @@
+// ──────────────────────────────────────────────────────────────
+// Firestore Security Rules — Netflaxt News
+// Copia/incolla in Firebase Console → Firestore → Rules
+// Sostituire ADMIN_EMAIL se cambia.
+// ──────────────────────────────────────────────────────────────
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.email == 'cretellamattia36@gmail.com';
+    }
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ─── ARTICOLI ──────────────────────────────────
+    match /articles/{articleId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      // Update: l'admin può tutto. Gli utenti loggati possono SOLO
+      // modificare il campo reactionCounts (per increment contatori reazioni).
+      allow update: if isAdmin()
+        || (isSignedIn()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactionCounts']));
+
+      // Reazioni: lettura pubblica, scrittura solo per il proprio doc
+      match /reactions/{uid} {
+        allow read: if true;
+        allow write: if isSelf(uid);
+      }
+
+      // Commenti: lettura pubblica, creazione solo autenticati,
+      // delete dall'autore o admin. Update per like / reply.
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isSignedIn()
+          && request.resource.data.uid == request.auth.uid;
+        allow update: if isSignedIn();  // like + reply
+        allow delete: if isAdmin()
+          || (isSignedIn() && resource.data.uid == request.auth.uid);
+      }
+    }
+
+    // ─── UTENTI ────────────────────────────────────
+    match /users/{uid} {
+      allow read: if true;            // profilo pubblico
+      allow create: if isSelf(uid);
+      allow update: if isSelf(uid) || isAdmin();
+      allow delete: if isSelf(uid) || isAdmin();
+
+      // Bookmarks: SOLO il proprietario può leggere/scrivere
+      match /bookmarks/{articleId} {
+        allow read, write: if isSelf(uid);
+      }
+
+      // Quiz giornaliero: SOLO il proprietario
+      match /quizDays/{day} {
+        allow read, write: if isSelf(uid);
+      }
+
+      // Dispositivi collegati: SOLO il proprietario può leggere/scrivere.
+      // Quando un device viene cancellato dall'utente, l'altro device
+      // se ne accorge in real-time e fa signOut automatico.
+      match /devices/{deviceId} {
+        allow read, write: if isSelf(uid);
+      }
+    }
+
+    // ─── PRONOSTICI ────────────────────────────────
+    match /predictions/{predId} {
+      allow read: if true;
+      allow create, update: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid;
+      allow delete: if isAdmin();
+    }
+
+    // ─── PARTITE ───────────────────────────────────
+    match /matches/{matchId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ─── SONDAGGI ──────────────────────────────────
+    match /polls/{pollId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      // Update: l'admin può tutto. Gli utenti loggati possono solo
+      // modificare optionCounts e/o totalVotes (per incrementare il voto).
+      allow update: if isAdmin()
+        || (isSignedIn()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['optionCounts', 'totalVotes']));
+
+      // Voti: lettura solo dell'utente stesso, scrittura solo per il proprio doc
+      match /votes/{uid} {
+        allow read: if isSelf(uid) || isAdmin();
+        allow write: if isSelf(uid);
+      }
+    }
+
+    // ─── SEGNALAZIONI ──────────────────────────────
+    match /reports/{reportId} {
+      // Crea: chiunque sia loggato; il reporter deve essere lo user corrente
+      allow create: if isSignedIn()
+        && request.resource.data.reporter.uid == request.auth.uid;
+      // Lettura/aggiornamento/eliminazione: solo admin
+      allow read, update, delete: if isAdmin();
+    }
+
+    // ─── CODA PUSH ─────────────────────────────────
+    match /pushQueue/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    // ─── MODERAZIONE (ricorsi al ban) ──────────────
+    // Il codice salva il campo `uid` (non `userId`). Le rules devono
+    // coincidere altrimenti la create/read falliscono.
+    match /appeals/{id} {
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid;
+      allow update: if isAdmin();
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

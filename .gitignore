@@ -17,6 +17,10 @@ dist-ssr
 .env.*
 !.env.example
 
+# Ambiente Python e config locali dell'assistente — non fanno parte del sito
+.venv/
+.claude/
+
 # 🔐 Chiavi Firebase service account — NON committare MAI (vanno solo
 # nei GitHub Secrets). Qualsiasi file di questo tipo resta locale.
 *serviceAccount*.json

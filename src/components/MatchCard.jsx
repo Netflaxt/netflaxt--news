@@ -1,0 +1,281 @@
+/* ─────────────────────────────────────────────────────────────
+   src/components/MatchCard.jsx
+   Card di una partita (#16). Mostra squadre, risultato/orario,
+   competizione e stato. Accetta children (es. widget pronostico).
+   ───────────────────────────────────────────────────────────── */
+import React, { useEffect, useState } from "react";
+import { logoForTeam } from "../utils/teamLogos";
+
+function TimeUnit({ value, label }) {
+  return (
+    <div className="flex flex-col items-center">
+      <span className="min-w-[2.1rem] px-1.5 py-1 rounded-md bg-bg-elevated border border-border text-text-primary text-lg font-black tabular-nums leading-none text-center">
+        {String(value).padStart(2, "0")}
+      </span>
+      <span className="mt-1 text-[9px] uppercase tracking-wider text-text-muted font-bold">{label}</span>
+    </div>
+  );
+}
+
+function MatchCountdown({ kickoff, timeConfirmed = true }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  if (!kickoff) return null;
+
+  // Orario non ancora fissato dalla Lega → mostriamo la data, niente
+  // countdown al secondo (sarebbe ingannevole di qualche ora).
+  if (!timeConfirmed) {
+    return (
+      <div className="mt-4 rounded-lg border border-border bg-bg-base/40 px-3 py-2.5 text-center">
+        <div className="text-[10px] uppercase tracking-[0.18em] font-bold text-text-muted mb-1">
+          {kickoff.toLocaleDateString("it-IT", { weekday: "long", day: "2-digit", month: "long" })}
+        </div>
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-text-secondary">
+          <svg className="w-3.5 h-3.5 text-text-muted" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Orario da definire
+        </span>
+      </div>
+    );
+  }
+
+  const diff = kickoff.getTime() - now;
+
+  if (diff <= 0) {
+    return (
+      <div className="mt-4 rounded-lg border border-accent/30 bg-accent/5 px-3 py-2 text-center">
+        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-accent uppercase tracking-wider">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-accent opacity-70 animate-ping" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
+          </span>
+          Sta per iniziare
+        </span>
+      </div>
+    );
+  }
+
+  const d = Math.floor(diff / 86400000);
+  const h = Math.floor((diff % 86400000) / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  const s = Math.floor((diff % 60000) / 1000);
+
+  return (
+    <div className="mt-4 rounded-lg border border-border bg-bg-base/40 px-3 py-2.5">
+      <div className="flex items-center justify-center gap-1.5 mb-1.5">
+        <svg className="w-3.5 h-3.5 text-text-muted" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span className="text-[10px] uppercase tracking-[0.18em] font-bold text-text-muted">
+          Quanto manca al match
+        </span>
+      </div>
+      <div className="flex items-start justify-center gap-2">
+        {d > 0 && <TimeUnit value={d} label="giorni" />}
+        <TimeUnit value={h} label="ore" />
+        <TimeUnit value={m} label="min" />
+        <TimeUnit value={s} label="sec" />
+      </div>
+    </div>
+  );
+}
+
+function crestInitials(name = "") {
+  return name.replace(/[^a-zA-ZÀ-ÿ ]/g, "").slice(0, 3).toUpperCase() || "?";
+}
+
+function TeamCrest({ name, logo, crest }) {
+  const [broken, setBroken] = useState(false);
+  // Priorità: logo personalizzato admin → logo locale → crest dall'API
+  const src = logo || logoForTeam(name) || crest;
+  if (src && !broken) {
+    return (
+      <img
+        src={src}
+        alt={name}
+        onError={() => setBroken(true)}
+        className="w-12 h-12 object-contain rounded-full bg-bg-elevated p-1"
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
+  return (
+    <div className="w-12 h-12 rounded-full bg-bg-elevated border border-border flex items-center justify-center text-xs font-black text-text-secondary">
+      {crestInitials(name)}
+    </div>
+  );
+}
+
+const EVENT_ICON = { yellow: "🟨", red: "🟥", injury: "🚑" };
+
+function MatchEvents({ events }) {
+  const homeGoals = [];
+  const awayGoals = [];
+  const others = [];
+  events.forEach((e) => {
+    if (["goal", "penalty", "owngoal"].includes(e.type)) {
+      const benefits = e.type === "owngoal" ? (e.team === "home" ? "away" : "home") : e.team;
+      const entry = { player: e.player, minute: e.minute, pen: e.type === "penalty", og: e.type === "owngoal" };
+      (benefits === "home" ? homeGoals : awayGoals).push(entry);
+    } else {
+      others.push(e);
+    }
+  });
+
+  if (homeGoals.length === 0 && awayGoals.length === 0 && others.length === 0) return null;
+
+  const fmtMin = (m) => (m != null ? `${m}'` : "");
+  const goalLine = (g) =>
+    `${g.player || "?"} ${fmtMin(g.minute)}${g.pen ? " (rig.)" : ""}${g.og ? " (aut.)" : ""}`.trim();
+
+  return (
+    <div className="rounded-lg border border-border bg-bg-base/40 p-3">
+      <div className="text-[9px] uppercase tracking-[0.18em] text-text-muted font-bold mb-2 text-center">
+        Tabellino
+      </div>
+      {(homeGoals.length > 0 || awayGoals.length > 0) && (
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div className="space-y-1 min-w-0">
+            {homeGoals.map((g, i) => (
+              <div key={i} className="text-text-secondary truncate">⚽ {goalLine(g)}</div>
+            ))}
+          </div>
+          <div className="space-y-1 min-w-0 text-right">
+            {awayGoals.map((g, i) => (
+              <div key={i} className="text-text-secondary truncate">{goalLine(g)} ⚽</div>
+            ))}
+          </div>
+        </div>
+      )}
+      {others.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-border-subtle flex flex-wrap gap-1.5 justify-center">
+          {others.map((e, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-bg-elevated border border-border text-text-secondary"
+            >
+              {EVENT_ICON[e.type] || "•"} {e.player || ""} {fmtMin(e.minute)}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatKickoff(date, timeConfirmed = true) {
+  if (!date) return "—";
+  if (!timeConfirmed) {
+    return (
+      date.toLocaleDateString("it-IT", { weekday: "short", day: "2-digit", month: "short" }) +
+      " · orario da definire"
+    );
+  }
+  return date.toLocaleString("it-IT", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export default function MatchCard({ match, children }) {
+  const kickoff = match.kickoff?.toDate?.() || (match.kickoff ? new Date(match.kickoff) : null);
+  const finished = match.status === "finished";
+  const live = match.status === "live";
+  const hasScore = match.homeScore != null && match.awayScore != null;
+  // Default true: i match vecchi/manuali senza il campo hanno orario certo
+  const timeConfirmed = match.timeConfirmed !== false;
+
+  return (
+    <div className="rounded-2xl bg-bg-surface border border-border overflow-hidden transition-all hover:border-border-strong">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-subtle">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[10px] uppercase tracking-[0.18em] font-bold text-accent truncate">
+            {match.competition || "Partita"}
+          </span>
+          {match.matchday != null && (
+            <span className="text-[10px] text-text-muted">· {match.matchday}ª giornata</span>
+          )}
+        </div>
+        {live ? (
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-error">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-error opacity-70 animate-ping" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-error" />
+            </span>
+            Live
+          </span>
+        ) : finished ? (
+          <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Finita</span>
+        ) : (
+          <span className="text-[10px] font-semibold text-text-secondary tabular-nums">
+            {formatKickoff(kickoff, timeConfirmed)}
+          </span>
+        )}
+      </div>
+
+      {/* Teams + score */}
+      <div className="px-4 py-5">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+          {/* Home */}
+          <div className="flex flex-col items-center gap-2 text-center min-w-0">
+            <TeamCrest name={match.homeTeam} logo={match.homeLogo} crest={match.homeCrest} />
+            <span className="text-sm font-bold text-text-primary leading-tight break-words">
+              {match.homeTeam}
+            </span>
+          </div>
+
+          {/* Center */}
+          <div className="flex flex-col items-center">
+            {hasScore || live ? (
+              <div className="text-3xl font-black tabular-nums text-text-primary flex items-center gap-2">
+                <span>{match.homeScore ?? 0}</span>
+                <span className="text-text-muted">:</span>
+                <span>{match.awayScore ?? 0}</span>
+              </div>
+            ) : (
+              <div className="px-3 py-1.5 rounded-lg bg-bg-elevated border border-border text-xs font-bold text-text-secondary tabular-nums">
+                {!kickoff
+                  ? "VS"
+                  : timeConfirmed
+                  ? kickoff.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })
+                  : "VS"}
+              </div>
+            )}
+          </div>
+
+          {/* Away */}
+          <div className="flex flex-col items-center gap-2 text-center min-w-0">
+            <TeamCrest name={match.awayTeam} logo={match.awayLogo} crest={match.awayCrest} />
+            <span className="text-sm font-bold text-text-primary leading-tight break-words">
+              {match.awayTeam}
+            </span>
+          </div>
+        </div>
+
+        {/* Countdown (solo partite in programma) */}
+        {!finished && !live && (
+          <MatchCountdown kickoff={kickoff} timeConfirmed={timeConfirmed} />
+        )}
+      </div>
+
+      {/* Tabellino (partite finite con eventi) */}
+      {finished && Array.isArray(match.events) && match.events.length > 0 && (
+        <div className="px-4 pb-4">
+          <MatchEvents events={match.events} />
+        </div>
+      )}
+
+      {/* Slot pronostico / extra */}
+      {children && <div className="px-4 pb-4">{children}</div>}
+    </div>
+  );
+}

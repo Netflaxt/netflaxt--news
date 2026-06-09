@@ -1,9 +1,75 @@
-import React, { useState, useEffect } from "react";
+/* ─────────────────────────────────────────────────────────────
+   src/components/Navbar.jsx
+   Patched: badge "nuovo articolo" sul link "News" quando c'è
+   stato un articolo pubblicato dopo l'ultima visita dell'utente.
+   ───────────────────────────────────────────────────────────── */
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { useTranslation } from "react-i18next";
+import useNewArticlesBadge from "../hooks/useNewArticlesBadge";
+import ThemeToggle from "./ThemeToggle";
 
 const ADMIN_EMAIL = "cretellamattia36@gmail.com";
+
+/* ─────────────────────────────────────────────────────────────
+   Avatar utente — mostra foto profilo se presente, iniziali altrimenti
+   ───────────────────────────────────────────────────────────── */
+function UserAvatar({
+  user,
+  sizeClass = "h-7 w-7",
+  textClass = "text-[10px]",
+  ring = "ring-2 ring-bg-base",
+}) {
+  const [imgError, setImgError] = useState(false);
+  const initials = (user.displayName || user.email || "??")
+    .slice(0, 2)
+    .toUpperCase();
+  const hasPhoto = !!user.photoURL && !imgError;
+
+  useEffect(() => {
+    setImgError(false);
+  }, [user.photoURL]);
+
+  if (hasPhoto) {
+    return (
+      <span
+        key={user.photoURL}
+        className={`${sizeClass} rounded-full overflow-hidden bg-bg-elevated ${ring} shrink-0 block`}
+      >
+        <img
+          src={user.photoURL}
+          alt={user.displayName || "Profilo"}
+          className="h-full w-full object-cover"
+          referrerPolicy="no-referrer"
+          onError={() => setImgError(true)}
+          draggable="false"
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className={`${sizeClass} rounded-full bg-gradient-to-br from-accent to-accent-deep flex items-center justify-center ${textClass} font-black text-text-inverse ${ring} shrink-0`}
+    >
+      {initials}
+    </span>
+  );
+}
+
+/* Punto rosso "nuovo articolo" — riusabile per desktop + mobile */
+function NewArticleDot({ className = "" }) {
+  return (
+    <span
+      className={`absolute flex h-2.5 w-2.5 ${className}`}
+      aria-label="Nuovo articolo pubblicato"
+      title="Nuovo articolo pubblicato"
+    >
+      <span className="absolute inline-flex h-full w-full rounded-full bg-error opacity-70 animate-ping" />
+      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-error ring-2 ring-bg-base" />
+    </span>
+  );
+}
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
@@ -11,13 +77,22 @@ export default function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { t, i18n: i18nInstance } = useTranslation();
+
+  const [indicator, setIndicator] = useState({ left: 0, width: 0, opacity: 0 });
+  const navRef = useRef(null);
+  const linksRef = useRef({});
+
+  // ✨ Badge "nuovo articolo"
+  const { hasNew } = useNewArticlesBadge();
 
   const links = [
-    { label: t("nav.home"), href: "/" },
-    { label: t("nav.news"), href: "/news" },
-    { label: t("nav.chat"), href: "/chat" },
-    { label: t("nav.about"), href: "/about" },
+    { label: "Home", href: "/" },
+    { label: "News", href: "/news", badge: hasNew },
+    { label: "Calendario", href: "/calendario" },
+    { label: "Pronostici", href: "/pronostici" },
+    { label: "Classifica", href: "/classifica" },
+    { label: "Chat", href: "/chat" },
+    { label: "Chi sono", href: "/about" },
   ];
 
   useEffect(() => {
@@ -31,213 +106,366 @@ export default function Navbar() {
     setOpen(false);
   }, [location.pathname]);
 
-  useEffect(() => {}, [i18nInstance.language]);
+  useEffect(() => {
+    document.body.style.overflow = open ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [open]);
+
+  const isActive = (href) =>
+    href === "/" ? location.pathname === "/" : location.pathname.startsWith(href);
+
+  const updateIndicator = () => {
+    const activeLink = links.find((l) => isActive(l.href));
+    if (!activeLink || !linksRef.current[activeLink.href] || !navRef.current) {
+      setIndicator((prev) => ({ ...prev, opacity: 0 }));
+      return;
+    }
+    const el = linksRef.current[activeLink.href];
+    const navRect = navRef.current.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    setIndicator({
+      left: elRect.left - navRect.left,
+      width: elRect.width,
+      opacity: 1,
+    });
+  };
+
+  useEffect(() => {
+    updateIndicator();
+    window.addEventListener("resize", updateIndicator);
+    return () => window.removeEventListener("resize", updateIndicator);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
   const handleLogout = async () => {
     await logout();
     navigate("/login");
   };
 
-  const isActive = (href) =>
-    href === "/" ? location.pathname === "/" : location.pathname.startsWith(href);
-
-  const Avatar = ({ size = "h-7 w-7" }) => (
-    user.photoURL ? (
-      <img
-        src={user.photoURL}
-        alt="avatar"
-        className={`${size} rounded-full object-cover ring-2 ring-sky-400`}
-      />
-    ) : (
-      <span className={`${size} rounded-full bg-gradient-to-br from-sky-300 to-sky-500 flex items-center justify-center text-[10px] font-black text-white`}>
-        {(user.displayName || user.email).slice(0, 2).toUpperCase()}
-      </span>
-    )
-  );
-
   return (
-    <header
-      className={`sticky top-0 z-50 w-full transition-all duration-300 ${
-        scrolled
-          ? "bg-white/85 backdrop-blur-xl border-b border-slate-200 shadow-[0_1px_0_0_rgba(15,23,42,0.04)]"
-          : "bg-white/70 backdrop-blur-md border-b border-transparent"
-      }`}
-    >
-      <div className="h-[3px] w-full bg-gradient-to-r from-transparent via-sky-400 to-transparent" />
+    <>
+      <header
+        className={`sticky top-0 z-50 w-full transition-all duration-500 ${
+          scrolled
+            ? "bg-bg-base/80 backdrop-blur-xl border-b border-border"
+            : "bg-bg-base/40 backdrop-blur-md border-b border-transparent"
+        }`}
+      >
+        <div
+          className={`h-px w-full bg-gradient-to-r from-transparent via-accent to-transparent transition-opacity duration-500 ${
+            scrolled ? "opacity-40" : "opacity-0"
+          }`}
+        />
 
-      <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 items-center justify-between">
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-3 group">
-            <div className="relative">
-              <div className="h-10 w-10 rounded-full overflow-hidden group-hover:scale-105 transition-all duration-300">
-                <img
-                  src="/logo.png"
-                  alt="Netflaxt News"
-                  className="w-full h-full object-contain"
+        <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-16 items-center justify-between gap-4">
+            {/* Logo */}
+            <Link to="/" className="flex items-center gap-3 group shrink-0">
+              <div className="relative">
+                <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-bg-elevated to-bg-surface flex items-center justify-center ring-1 ring-accent/30 shadow-[0_0_20px_-4px_rgba(56,189,248,0.4)] group-hover:shadow-[0_0_28px_-2px_rgba(56,189,248,0.7)] group-hover:ring-accent/60 group-hover:scale-105 transition-all duration-300 overflow-hidden">
+                  <img
+                    src="/logo.png"
+                    alt="Netflaxt News"
+                    className="h-7 w-7 object-contain"
+                    draggable="false"
+                  />
+                </div>
+                <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-success opacity-60 animate-ping" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-success ring-2 ring-bg-base" />
+                </span>
+              </div>
+              <div className="flex flex-col leading-none">
+                <span
+                  className="text-xl text-text-primary tracking-wide"
+                  style={{
+                    fontFamily: "var(--font-display)",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  NETFLAXT <span className="text-accent">NEWS</span>
+                </span>
+                <span className="hidden sm:block text-[9px] uppercase tracking-[0.28em] text-text-muted mt-0.5">
+                  Fan site · Biancoceleste
+                </span>
+              </div>
+            </Link>
+
+            {/* Links desktop */}
+            <div ref={navRef} className="hidden md:flex relative items-center">
+              <div
+                className="absolute h-8 top-1/2 -translate-y-1/2 rounded-md bg-accent/10 border border-accent/20 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-none"
+                style={{
+                  left: `${indicator.left}px`,
+                  width: `${indicator.width}px`,
+                  opacity: indicator.opacity,
+                }}
+              />
+              <ul className="relative flex items-center gap-1">
+                {links.map((l) => {
+                  const active = isActive(l.href);
+                  return (
+                    <li key={l.label}>
+                      <Link
+                        ref={(el) => (linksRef.current[l.href] = el)}
+                        to={l.href}
+                        className={`relative px-3.5 py-2 text-sm font-medium transition-colors duration-300 rounded-md ${
+                          active
+                            ? "text-accent"
+                            : "text-text-secondary hover:text-text-primary"
+                        }`}
+                      >
+                        {l.label}
+                        {/* Badge "nuovo" sul link News */}
+                        {l.badge && !active && (
+                          <NewArticleDot className="top-1 -right-0.5" />
+                        )}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+
+            {/* CTA desktop */}
+            <div className="hidden md:flex items-center gap-2 shrink-0">
+              <ThemeToggle />
+              {user ? (
+                <>
+                  <Link
+                    to="/profile"
+                    className="flex items-center gap-2.5 pl-1 pr-3 py-1 rounded-full hover:bg-bg-elevated border border-transparent hover:border-border transition-all duration-300 group"
+                  >
+                    <UserAvatar
+                      user={user}
+                      sizeClass="h-7 w-7"
+                      textClass="text-[10px]"
+                    />
+                    <span className="text-sm text-text-secondary font-medium group-hover:text-text-primary transition max-w-[120px] truncate">
+                      {user.displayName || user.email.split("@")[0]}
+                    </span>
+                  </Link>
+
+                  {user.email === ADMIN_EMAIL && (
+                    <Link
+                      to="/admin"
+                      className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.15em] text-accent bg-accent/10 border border-accent/30 rounded-md hover:bg-accent/20 hover:border-accent/50 transition-all duration-300"
+                    >
+                      Admin
+                    </Link>
+                  )}
+
+                  <button
+                    onClick={handleLogout}
+                    className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary border border-border hover:border-border-strong rounded-md transition-all duration-300"
+                  >
+                    Esci
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link
+                    to="/login"
+                    className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors duration-300"
+                  >
+                    Accedi
+                  </Link>
+                  <Link
+                    to="/login"
+                    className="group relative px-4 py-2 text-sm font-semibold text-text-inverse bg-accent rounded-md overflow-hidden transition-all duration-300 hover:shadow-[0_0_24px_-4px_rgba(56,189,248,0.7)]"
+                  >
+                    <span className="relative z-10">Registrati</span>
+                    <span className="absolute inset-0 bg-gradient-to-r from-accent via-accent-hover to-accent translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-500" />
+                    <span className="relative z-10 ml-1 inline-block transition-transform duration-300 group-hover:translate-x-0.5">
+                      →
+                    </span>
+                  </Link>
+                </>
+              )}
+            </div>
+
+            {/* Mobile: theme toggle compatto + hamburger */}
+            <div className="md:hidden flex items-center gap-2">
+              <ThemeToggle />
+              <button
+              onClick={() => setOpen(!open)}
+              className="relative w-10 h-10 rounded-md border border-border hover:border-border-strong bg-bg-surface/50 transition-colors duration-300"
+              aria-label={open ? "Chiudi menu" : "Apri menu"}
+              aria-expanded={open}
+            >
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5">
+                <span
+                  className={`block h-[1.5px] w-5 bg-text-primary transition-all duration-300 origin-center ${
+                    open ? "rotate-45 translate-y-[3.5px]" : ""
+                  }`}
+                />
+                <span
+                  className={`block h-[1.5px] w-5 bg-text-primary transition-all duration-300 origin-center ${
+                    open ? "-rotate-45 -translate-y-[3.5px]" : ""
+                  }`}
                 />
               </div>
-              <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white animate-pulse" />
+              {/* Badge "nuovo" sul toggle mobile quando il menu è chiuso */}
+              {hasNew && !open && (
+                <NewArticleDot className="top-1.5 right-1.5" />
+              )}
+            </button>
             </div>
-            <div className="flex flex-col leading-none">
-              <span
-                className="text-xl text-slate-900 tracking-wide"
-                style={{ fontFamily: "'Bebas Neue', sans-serif", letterSpacing: "0.05em" }}
-              >
-                NETFLAXT <span className="text-sky-500">NEWS</span>
-              </span>
-              <span className="text-[9px] uppercase tracking-[0.25em] text-slate-400 mt-0.5">
-                Fan site · Biancoceleste
-              </span>
-            </div>
-          </Link>
-
-          {/* Links desktop */}
-          <ul className="hidden md:flex items-center gap-1">
-            {links.map((l) => {
-              const active = isActive(l.href);
-              return (
-                <li key={l.label}>
-                  <Link
-                    to={l.href}
-                    className={`relative px-4 py-2 text-sm font-semibold transition-colors duration-200 group ${
-                      active ? "text-sky-600" : "text-slate-700 hover:text-slate-900"
-                    }`}
-                  >
-                    {l.label}
-                    <span
-                      className={`absolute left-3 right-3 -bottom-0.5 h-[2px] bg-sky-400 origin-left transition-transform duration-300 ${
-                        active ? "scale-x-100" : "scale-x-0 group-hover:scale-x-100"
-                      }`}
-                    />
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-
-          {/* CTA desktop */}
-          <div className="hidden md:flex items-center gap-2">
-            {user ? (
-              <div className="flex items-center gap-2">
-                <Link
-                  to="/profile"
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-full hover:bg-slate-100 transition group"
-                >
-                  <Avatar size="h-7 w-7" />
-                  <span className="text-sm text-slate-700 font-medium group-hover:text-sky-600 transition max-w-[140px] truncate">
-                    {user.displayName || user.email}
-                  </span>
-                </Link>
-                {user.email === ADMIN_EMAIL && (
-                  <Link
-                    to="/admin"
-                    className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-sky-700 bg-sky-50 border border-sky-200 rounded-md hover:bg-sky-100 hover:border-sky-300 transition"
-                  >
-                    {t("nav.admin")}
-                  </Link>
-                )}
-                <button
-                  onClick={handleLogout}
-                  className="px-4 py-2 text-sm font-semibold text-slate-700 hover:text-white hover:bg-slate-900 border border-slate-200 hover:border-slate-900 rounded-md transition-all duration-200"
-                >
-                  {t("nav.logout")}
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <Link
-                  to="/login"
-                  className="px-4 py-2 text-sm font-semibold text-slate-700 hover:text-slate-900 transition"
-                >
-                  {t("nav.login")}
-                </Link>
-                <Link
-                  to="/login"
-                  className="relative px-4 py-2 text-sm font-bold text-white bg-slate-900 rounded-md overflow-hidden group transition-all duration-300 hover:shadow-lg hover:shadow-sky-500/30"
-                >
-                  <span className="relative z-10 group-hover:text-slate-900 transition-colors duration-300">
-                    {t("nav.register")}
-                  </span>
-                  <span className="absolute inset-0 bg-sky-400 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-                </Link>
-              </div>
-            )}
           </div>
+        </nav>
+      </header>
 
-          {/* Mobile toggle */}
-          <button
-            onClick={() => setOpen(!open)}
-            className="md:hidden p-2 rounded-md hover:bg-slate-100 transition"
-            aria-label="Apri menu"
-          >
-            <div className="w-6 h-6 relative">
-              <span className={`absolute left-0 top-1.5 h-0.5 w-6 bg-slate-900 transition-all duration-300 ${open ? "rotate-45 translate-y-1.5" : ""}`} />
-              <span className={`absolute left-0 top-3 h-0.5 w-6 bg-slate-900 transition-all duration-200 ${open ? "opacity-0" : ""}`} />
-              <span className={`absolute left-0 top-[18px] h-0.5 w-6 bg-slate-900 transition-all duration-300 ${open ? "-rotate-45 -translate-y-1.5" : ""}`} />
-            </div>
-          </button>
-        </div>
+      {/* MOBILE MENU */}
+      <div
+        className={`fixed inset-0 z-40 md:hidden transition-opacity duration-300 ${
+          open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
+        aria-hidden={!open}
+      >
+        <div
+          className="absolute inset-0 bg-bg-base/95 backdrop-blur-xl"
+          onClick={() => setOpen(false)}
+        />
 
-        {/* Mobile menu */}
-        <div className={`md:hidden overflow-hidden transition-all duration-300 ease-out ${open ? "max-h-[500px] pb-4" : "max-h-0"}`}>
-          <div className="border-t border-slate-200 pt-3 space-y-1">
+        <div className="relative h-full pt-20 px-6 flex flex-col">
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 w-64 h-32 bg-accent/10 blur-3xl rounded-full pointer-events-none" />
+
+          <nav className="relative flex flex-col gap-1 mt-4">
             {links.map((l, i) => {
               const active = isActive(l.href);
               return (
                 <Link
                   key={l.label}
                   to={l.href}
-                  className={`block px-3 py-2.5 rounded-md text-base font-medium transition-all duration-200 ${
+                  className={`group flex items-center justify-between px-4 py-4 rounded-lg text-2xl font-semibold transition-all duration-300 ${
                     active
-                      ? "bg-sky-50 text-sky-700 border-l-2 border-sky-400 pl-3.5"
-                      : "text-slate-700 hover:bg-slate-50 hover:text-sky-700"
+                      ? "bg-accent/10 border border-accent/20 text-accent"
+                      : "border border-transparent text-text-primary hover:bg-bg-surface hover:border-border"
                   }`}
-                  style={{ transitionDelay: open ? `${i * 30}ms` : "0ms" }}
+                  style={{
+                    fontFamily: "var(--font-display)",
+                    letterSpacing: "0.04em",
+                    animation: open
+                      ? `fade-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) ${i * 60}ms both`
+                      : "none",
+                  }}
                 >
-                  {l.label}
+                  <span className="flex items-center gap-3">
+                    <span
+                      className={`block w-1 h-6 rounded-full transition-all duration-300 ${
+                        active
+                          ? "bg-accent"
+                          : "bg-transparent group-hover:bg-text-muted"
+                      }`}
+                    />
+                    {l.label.toUpperCase()}
+                    {/* Badge mobile menu */}
+                    {l.badge && !active && (
+                      <span className="ml-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-error/15 border border-error/40 text-[9px] uppercase tracking-wider text-error font-bold">
+                        <span className="h-1.5 w-1.5 rounded-full bg-error" />
+                        Novità
+                      </span>
+                    )}
+                  </span>
+                  <span
+                    className={`text-base transition-all duration-300 ${
+                      active
+                        ? "translate-x-0 opacity-100"
+                        : "-translate-x-2 opacity-0 group-hover:translate-x-0 group-hover:opacity-100"
+                    }`}
+                  >
+                    →
+                  </span>
                 </Link>
               );
             })}
-            <div className="flex gap-2 pt-3 px-1">
-              {user ? (
-                <>
+          </nav>
+
+          <div className="my-6 divider-glow" />
+
+          <div
+            className="relative flex flex-col gap-2"
+            style={{
+              animation: open
+                ? "fade-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) 280ms both"
+                : "none",
+            }}
+          >
+            {user ? (
+              <>
+                <Link
+                  to="/profile"
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border bg-bg-surface hover:border-border-strong transition"
+                >
+                  <UserAvatar
+                    user={user}
+                    sizeClass="h-10 w-10"
+                    textClass="text-sm"
+                  />
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-sm font-semibold text-text-primary truncate">
+                      {user.displayName || "Profilo"}
+                    </span>
+                    <span className="text-xs text-text-muted truncate">
+                      {user.email}
+                    </span>
+                  </div>
+                </Link>
+
+                {user.email === ADMIN_EMAIL && (
                   <Link
-                    to="/profile"
-                    className="flex-1 py-2.5 text-sm font-semibold border border-slate-300 rounded-md text-center text-slate-700 hover:bg-slate-50 transition flex items-center justify-center gap-2"
+                    to="/admin"
+                    className="px-4 py-3 rounded-lg text-sm font-bold uppercase tracking-wider text-accent bg-accent/10 border border-accent/30 text-center hover:bg-accent/20 transition"
                   >
-                    <Avatar size="h-5 w-5" />
-                    {t("nav.profile")}
+                    Pannello Admin
                   </Link>
-                  {user.email === ADMIN_EMAIL && (
-                    <Link
-                      to="/admin"
-                      className="flex-1 py-2.5 text-sm font-semibold border border-sky-400 bg-sky-50 text-sky-700 rounded-md text-center hover:bg-sky-100 transition"
-                    >
-                      {t("nav.admin")}
-                    </Link>
-                  )}
-                  <button
-                    onClick={handleLogout}
-                    className="flex-1 py-2.5 text-sm font-semibold bg-slate-900 text-white rounded-md hover:bg-red-600 transition"
-                  >
-                    {t("nav.logout")}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <Link to="/login" className="flex-1 py-2.5 text-sm font-semibold border border-slate-300 rounded-md text-center hover:bg-slate-50 transition">
-                    {t("nav.login")}
-                  </Link>
-                  <Link to="/login" className="flex-1 py-2.5 text-sm font-semibold bg-slate-900 text-white rounded-md text-center hover:bg-sky-500 hover:text-slate-900 transition">
-                    {t("nav.register")}
-                  </Link>
-                </>
-              )}
-            </div>
+                )}
+
+                <button
+                  onClick={handleLogout}
+                  className="px-4 py-3 rounded-lg text-sm font-semibold text-text-primary border border-border hover:border-error hover:text-error transition"
+                >
+                  Esci
+                </button>
+              </>
+            ) : (
+              <>
+                <Link
+                  to="/login"
+                  className="px-4 py-3 rounded-lg text-sm font-semibold text-text-primary border border-border hover:border-border-strong text-center transition"
+                >
+                  Accedi
+                </Link>
+                <Link
+                  to="/login"
+                  className="px-4 py-3 rounded-lg text-sm font-bold text-text-inverse bg-accent hover:bg-accent-hover text-center transition shadow-[0_0_24px_-6px_rgba(56,189,248,0.6)]"
+                >
+                  Registrati gratis →
+                </Link>
+              </>
+            )}
+          </div>
+
+          <div
+            className="relative mt-6"
+            style={{
+              animation: open
+                ? "fade-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) 340ms both"
+                : "none",
+            }}
+          >
+            <ThemeToggle variant="full" />
+          </div>
+
+          <div className="mt-auto pb-8 pt-6 text-center">
+            <span className="text-[10px] uppercase tracking-[0.3em] text-text-muted">
+              Fan site · Biancoceleste
+            </span>
           </div>
         </div>
-      </nav>
-    </header>
+      </div>
+    </>
   );
 }

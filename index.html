@@ -1,11 +1,49 @@
 <!doctype html>
-<html lang="en">
+<html lang="it">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <title>netflaxt-news</title>
+    <meta name="theme-color" content="#05070D" />
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- 🦅 Preload aquila + verso: priorità massima per partenza istantanea
+         dell'easter egg. Vengono scaricati in parallelo al JS. -->
+    <link rel="preload" as="image" href="/eagle.png" fetchpriority="high" />
+    <link rel="preload" as="audio" href="/eagle-cry.mp3" fetchpriority="high" />
+
+    <title>Netflaxt News · La casa dei tifosi laziali</title>
+    <meta name="description" content="News, analisi, calciomercato, calendario e chat live sulla S.S. Lazio. Fan site indipendente biancoceleste." />
+    <meta name="author" content="Netflaxt News" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <link rel="canonical" href="https://www.netflaxt.it/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Netflaxt News" />
+    <meta property="og:title" content="Netflaxt News · La casa dei tifosi laziali" />
+    <meta property="og:description" content="News, analisi, calciomercato e chat live sulla S.S. Lazio. Fan site indipendente biancoceleste." />
+    <meta property="og:image" content="https://www.netflaxt.it/icon-512.png" />
+    <meta property="og:locale" content="it_IT" />
+    <meta property="og:url" content="https://www.netflaxt.it/" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Netflaxt News · La casa dei tifosi laziali" />
+    <meta name="twitter:description" content="News, analisi e chat live sulla S.S. Lazio." />
+    <meta name="twitter:image" content="https://www.netflaxt.it/icon-512.png" />
+    <script>
+      // Anti-FOUC: applica il tema salvato prima del primo paint
+      (function () {
+        try {
+          var t = localStorage.getItem("netflaxt_theme");
+          if (t !== "light" && t !== "dark") t = "dark";
+          document.documentElement.setAttribute("data-theme", t);
+          var m = document.querySelector('meta[name="theme-color"]');
+          if (m) m.setAttribute("content", t === "light" ? "#EEF2F7" : "#05070D");
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,1 +1,318 @@
 @import "tailwindcss";
+
+/* Inter + Bebas Neue caricati via <link> in index.html */
+
+@theme {
+  --color-bg-base:     #05070D;
+  --color-bg-surface:  #0A0E1A;
+  --color-bg-elevated: #111827;
+  --color-bg-subtle:   #0E1424;
+
+  --color-accent:       #38BDF8;
+  --color-accent-hover: #7DD3FC;
+  --color-accent-deep:  #0EA5E9;
+
+  --color-text-primary:   #F8FAFC;
+  --color-text-secondary: #94A3B8;
+  --color-text-muted:     #64748B;
+  --color-text-inverse:   #0A0E1A;
+
+  --color-border:        #1E293B;
+  --color-border-subtle: #141B2D;
+  --color-border-strong: #334155;
+
+  --color-success: #10B981;
+  --color-error:   #F43F5E;
+  --color-warning: #F59E0B;
+
+  --font-display: 'Bebas Neue', sans-serif;
+  --font-body:    'Inter', system-ui, -apple-system, sans-serif;
+
+  --animate-fade-up:    fade-up    0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-fade-in:    fade-in    0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-slide-down: slide-down 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-glow-pulse: glow-pulse 2s   ease-in-out infinite;
+  --animate-shimmer:    shimmer    1.5s linear infinite;
+  --animate-scale-in:   scale-in   0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-chat-in:    chat-in    0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes slide-down {
+    from { opacity: 0; transform: translateY(-12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes glow-pulse {
+    0%, 100% { box-shadow: 0 0 0 0    rgba(56, 189, 248, 0.4); }
+    50%      { box-shadow: 0 0 24px 4px rgba(56, 189, 248, 0.25); }
+  }
+  @keyframes shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position:  200% 0; }
+  }
+  @keyframes scale-in {
+    from { opacity: 0; transform: scale(0.97); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  @keyframes chat-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0)    scale(1); }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   TEMA DARK (default) / LIGHT (switch)
+   I token sopra (@theme) sono i valori dark di default ed emessi
+   da Tailwind su :root. Qui li sovrascriviamo per il tema light
+   tramite [data-theme="light"] sull'elemento <html>.
+   La specificità di :root[data-theme="light"] (0,2,0) batte :root.
+   ───────────────────────────────────────────────────────────── */
+:root {
+  color-scheme: dark;
+  --app-bg-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(56, 189, 248, 0.08), transparent),
+    radial-gradient(ellipse 60% 50% at 100% 100%, rgba(14, 165, 233, 0.04), transparent);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --color-bg-base:     #EEF2F7;
+  --color-bg-surface:  #FFFFFF;
+  --color-bg-elevated: #F1F5F9;
+  --color-bg-subtle:   #F8FAFC;
+
+  --color-accent:       #0284C7;
+  --color-accent-hover: #0369A1;
+  --color-accent-deep:  #075985;
+
+  --color-text-primary:   #0F172A;
+  --color-text-secondary: #475569;
+  --color-text-muted:     #64748B;
+  --color-text-inverse:   #FFFFFF;
+
+  /* Bordi più contrastati per restare visibili sul bg chiaro
+     (le griglie e le card altrimenti sparivano). */
+  --color-border:        #CBD5E1;
+  --color-border-subtle: #D6DEE8;
+  --color-border-strong: #94A3B8;
+
+  --color-success: #059669;
+  --color-error:   #E11D48;
+  --color-warning: #D97706;
+
+  --app-bg-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(2, 132, 199, 0.06), transparent),
+    radial-gradient(ellipse 60% 50% at 100% 100%, rgba(2, 132, 199, 0.04), transparent);
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  min-height: 100vh;
+  background-image: var(--app-bg-image);
+  background-attachment: fixed;
+  /* Switch tema istantaneo (era 0.4s, percepibile come "lag"). */
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Inter', system-ui, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+::selection {
+  background-color: rgba(56, 189, 248, 0.3);
+  color: var(--color-text-primary);
+}
+::-moz-selection {
+  background-color: rgba(56, 189, 248, 0.3);
+  color: var(--color-text-primary);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) var(--color-bg-base);
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--color-bg-base); }
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 8px;
+  border: 2px solid var(--color-bg-base);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--color-border-strong); }
+::-webkit-scrollbar-corner { background: var(--color-bg-base); }
+
+:focus-visible {
+  outline: 2px solid #38BDF8;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible {
+  outline-offset: 3px;
+}
+
+@layer utilities {
+  .glow-accent-hover {
+    transition: box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .glow-accent-hover:hover {
+    box-shadow: 0 0 24px -4px rgba(56, 189, 248, 0.4);
+    border-color: #38BDF8;
+  }
+  .text-gradient-accent {
+    background: linear-gradient(135deg, var(--color-text-primary) 0%, var(--color-accent-hover) 55%, var(--color-accent) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+  .divider-glow {
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, #38BDF8 50%, transparent 100%);
+    opacity: 0.4;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+}
+
+/* Emoji Twemoji: stesse dimensioni del testo, allineate alla riga */
+img.twemoji {
+  height: 1em;
+  width: 1em;
+  margin: 0 0.05em 0 0.1em;
+  vertical-align: -0.1em;
+  display: inline-block;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   PERFORMANCE: rispetto delle preferenze utente per le animazioni.
+   - Utenti con prefers-reduced-motion (impostato da sistema) o
+     con dispositivi vecchi/lenti vedono UI senza animazioni pesanti,
+     mantenendo la piena funzionalità.
+   - I transition restano <50ms per non rompere i feedback al click.
+   ───────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Img: ottimizza decode async + fade-in fluido al load.
+   Funziona globalmente senza dover modificare ogni componente. */
+img {
+  content-visibility: auto;
+}
+
+/* Entrata staggered delle card (Home/News): usa ANIMATION (non
+   transition) così il delay d'ingresso NON si applica anche all'hover.
+   Questo elimina il "lag" dell'animazione di sollevamento al passaggio
+   del mouse. */
+@keyframes nf-card-in-kf {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.nf-card-in {
+  animation: nf-card-in-kf 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Microinterazioni globali (Fase 7 polish)
+   ───────────────────────────────────────────────────────────── */
+
+/* Focus visible accessibile: ring biancoceleste su tutto ciò che riceve
+   focus da tastiera. Non interferisce con il focus da click (mouse). */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+button:focus-visible,
+a:focus-visible {
+  outline-offset: 3px;
+}
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none; /* gestiti dai loro stati personalizzati */
+}
+
+/* Feedback "tap" su mobile: piccolo schiacciamento sui pulsanti */
+@media (hover: none) {
+  button:active:not(:disabled),
+  a:active {
+    transform: scale(0.97);
+    transition: transform 0.08s ease-out;
+  }
+}
+
+/* Selezione testo biancoceleste */
+::selection {
+  background-color: rgba(56, 189, 248, 0.30);
+  color: var(--color-text-primary);
+}
+
+/* Fade page-transition al cambio route (applicato dal wrapper App) */
+@keyframes nf-page-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.nf-page-enter {
+  animation: nf-page-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Scrollbar discreta su tema dark (Chromium) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg-base);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 6px;
+  border: 2px solid var(--color-bg-base);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent);
+}
+
+/* Reduced motion: spegne tutte le animazioni custom */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
