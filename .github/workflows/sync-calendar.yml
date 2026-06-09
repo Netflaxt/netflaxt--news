@@ -1,0 +1,45 @@
+name: Sync calendario Lazio
+
+# Sincronizza automaticamente il calendario Serie A della Lazio da
+# football-data.org verso Firestore. Carica i match e aggiorna gli
+# spostamenti di data/ora SENZA intervento manuale.
+
+on:
+  # 2 volte al giorno (orari UTC). Gli spostamenti di Serie A si sanno
+  # con giorni/settimane di anticipo, quindi 2x/giorno è abbondante.
+  schedule:
+    - cron: "0 6 * * *"   # 06:00 UTC (~08:00 in Italia)
+    - cron: "0 17 * * *"  # 17:00 UTC (~19:00 in Italia)
+  # Bottone "Run workflow" per lanciarlo a mano (es. il primo caricamento)
+  workflow_dispatch:
+
+# Evita esecuzioni sovrapposte
+concurrency:
+  group: sync-calendar
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Installa dipendenze (scripts)
+        working-directory: scripts
+        run: npm install --no-audit --no-fund
+
+      - name: Esegui sync
+        working-directory: scripts
+        env:
+          FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SEASON: "2026"
+          TEAM: "Lazio"
+        run: node sync-lazio-calendar.mjs

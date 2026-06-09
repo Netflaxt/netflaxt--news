@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# 🔐 Chiavi Firebase service account — NON committare MAI (vanno solo
+# nei GitHub Secrets). Qualsiasi file di questo tipo resta locale.
+*serviceAccount*.json
+*service-account*.json
+*-firebase-adminsdk-*.json
+scripts/node_modules
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -1,0 +1,13 @@
+{
+  "name": "netflaxt-sync",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Script di sincronizzazione calendario Serie A (football-data.org → Firestore). Gira solo su GitHub Actions, separato dal sito.",
+  "scripts": {
+    "sync": "node sync-lazio-calendar.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.2"
+  }
+}
