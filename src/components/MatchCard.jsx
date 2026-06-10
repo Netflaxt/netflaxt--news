@@ -17,7 +17,7 @@ function TimeUnit({ value, label }) {
   );
 }
 
-function MatchCountdown({ kickoff, timeConfirmed = true }) {
+function MatchCountdown({ kickoff, timeConfirmed = true, label = "Orario da definire" }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -26,19 +26,19 @@ function MatchCountdown({ kickoff, timeConfirmed = true }) {
 
   if (!kickoff) return null;
 
-  // Orario non ancora fissato dalla Lega → mostriamo la data, niente
-  // countdown al secondo (sarebbe ingannevole di qualche ora).
+  // Data/orario non ancora ufficiali (partita lontana o ora non fissata) →
+  // mostriamo la data provvisoria, niente countdown al secondo (ingannevole).
   if (!timeConfirmed) {
     return (
       <div className="mt-4 rounded-lg border border-border bg-bg-base/40 px-3 py-2.5 text-center">
         <div className="text-[10px] uppercase tracking-[0.18em] font-bold text-text-muted mb-1">
           {kickoff.toLocaleDateString("it-IT", { weekday: "long", day: "2-digit", month: "long" })}
         </div>
-        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-text-secondary">
-          <svg className="w-3.5 h-3.5 text-text-muted" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-warning">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
-          Orario da definire
+          {label}
         </span>
       </div>
     );
@@ -168,12 +168,13 @@ function MatchEvents({ events }) {
   );
 }
 
-function formatKickoff(date, timeConfirmed = true) {
+function formatKickoff(date, timeConfirmed = true, label = "orario da definire") {
   if (!date) return "—";
   if (!timeConfirmed) {
     return (
       date.toLocaleDateString("it-IT", { weekday: "short", day: "2-digit", month: "short" }) +
-      " · orario da definire"
+      " · " +
+      label.toLowerCase()
     );
   }
   return date.toLocaleString("it-IT", {
@@ -185,13 +186,26 @@ function formatKickoff(date, timeConfirmed = true) {
   });
 }
 
+// Oltre ~5 settimane il calendario Serie A non è ancora ufficiale: la Lega
+// fissa giorno/ora di ogni turno solo a ridosso. Queste partite le segnaliamo
+// come "Data da confermare" (la data mostrata è provvisoria).
+const PROVISIONAL_DAYS = 35;
+
 export default function MatchCard({ match, children }) {
   const kickoff = match.kickoff?.toDate?.() || (match.kickoff ? new Date(match.kickoff) : null);
   const finished = match.status === "finished";
   const live = match.status === "live";
   const hasScore = match.homeScore != null && match.awayScore != null;
-  // Default true: i match vecchi/manuali senza il campo hanno orario certo
-  const timeConfirmed = match.timeConfirmed !== false;
+  // Partita "lontana" → data ancora provvisoria
+  const far =
+    !finished &&
+    !live &&
+    kickoff &&
+    kickoff.getTime() - Date.now() > PROVISIONAL_DAYS * 86400000;
+  // Confermata = ha un orario certo dal sync E non è troppo lontana
+  const timeConfirmed = match.timeConfirmed !== false && !far;
+  // Etichetta: data provvisoria (lontana) vs solo orario mancante
+  const provLabel = far ? "Data da confermare" : "Orario da definire";
 
   return (
     <div className="rounded-2xl bg-bg-surface border border-border overflow-hidden transition-all hover:border-border-strong">
@@ -217,7 +231,7 @@ export default function MatchCard({ match, children }) {
           <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Finita</span>
         ) : (
           <span className="text-[10px] font-semibold text-text-secondary tabular-nums">
-            {formatKickoff(kickoff, timeConfirmed)}
+            {formatKickoff(kickoff, timeConfirmed, provLabel)}
           </span>
         )}
       </div>
@@ -263,7 +277,7 @@ export default function MatchCard({ match, children }) {
 
         {/* Countdown (solo partite in programma) */}
         {!finished && !live && (
-          <MatchCountdown kickoff={kickoff} timeConfirmed={timeConfirmed} />
+          <MatchCountdown kickoff={kickoff} timeConfirmed={timeConfirmed} label={provLabel} />
         )}
       </div>
 
