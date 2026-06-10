@@ -135,16 +135,28 @@ function scheduleFields(ev) {
   };
 }
 
-/* ── Fetch di una giornata ────────────────────────────────────── */
-async function fetchRound(round) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Pausa tra una giornata e l'altra: la chiave gratuita "3" è condivisa e
+// rate-limited (~30 richieste/minuto), quindi andiamo piano.
+const ROUND_DELAY_MS = Number(process.env.ROUND_DELAY_MS || 2000);
+
+/* ── Fetch di una giornata (con retry sul rate limit 429) ─────── */
+async function fetchRound(round, attempt = 1) {
   const url = `${API}/eventsround.php?id=${LEAGUE_ID}&r=${round}&s=${SEASON}`;
   const res = await fetch(url);
+  if (res.status === 429 && attempt <= 4) {
+    const wait = 12000;
+    console.warn(
+      `   ⏳ Giornata ${round}: limite richieste (429), attendo ${wait / 1000}s e riprovo (tentativo ${attempt + 1})…`
+    );
+    await sleep(wait);
+    return fetchRound(round, attempt + 1);
+  }
   if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
   const data = await res.json();
   return Array.isArray(data.events) ? data.events : [];
 }
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function fmtDate(ts) {
   try {
@@ -190,7 +202,7 @@ async function main() {
     }
     if (events.length) roundsWithData++;
     ours.push(...events.filter(isOurTeam));
-    await sleep(300); // rispetta il rate limit della chiave gratuita
+    await sleep(ROUND_DELAY_MS); // rispetta il rate limit della chiave gratuita
   }
   console.log(
     `   Giornate con dati: ${roundsWithData}/${ROUNDS} · partite "${TEAM}" trovate: ${ours.length}`
