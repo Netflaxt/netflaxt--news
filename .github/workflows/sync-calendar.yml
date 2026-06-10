@@ -38,8 +38,12 @@ jobs:
       - name: Esegui sync
         working-directory: scripts
         env:
-          FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          SEASON: "2026"
+          # Chiave TheSportsDB: opzionale. Se il secret non è impostato,
+          # lo script usa la chiave pubblica gratuita "3".
+          THESPORTSDB_KEY: ${{ secrets.THESPORTSDB_KEY }}
+          SEASON: "2026-2027"
+          LEAGUE_ID: "4332"
           TEAM: "Lazio"
+          TEAM_ID: "133668"
         run: node sync-lazio-calendar.mjs

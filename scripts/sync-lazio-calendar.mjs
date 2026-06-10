@@ -1,9 +1,14 @@
 /* ─────────────────────────────────────────────────────────────
    scripts/sync-lazio-calendar.mjs
-   Sincronizza il calendario della Lazio (Serie A) da football-data.org
+   Sincronizza il calendario della Lazio (Serie A) da TheSportsDB
    verso Firestore (collezione "matches"). Gira su GitHub Actions, 2x al
    giorno + manualmente. Carica i match mancanti e aggiorna gli orari/date
    spostati AUTOMATICAMENTE, senza intervento manuale.
+
+   Fonte: TheSportsDB (thesportsdb.com). La chiave gratuita pubblica "3"
+   limita le richieste "per stagione" a pochi eventi, quindi scarichiamo
+   il calendario UNA GIORNATA ALLA VOLTA (endpoint eventsround), così
+   otteniamo tutte le 38 giornate complete.
 
    Sicurezza anti-sovrascrittura:
      • non tocca MAI risultato/tabellino inseriti dall'admin (scored=true)
@@ -11,32 +16,32 @@
      • non sovrascrive un logo personalizzato caricato dall'admin
      • i match creati a mano (senza externalId) non vengono mai toccati
 
-   Variabili d'ambiente (impostate come "secret" su GitHub Actions):
-     FOOTBALL_DATA_TOKEN      → token gratuito football-data.org
-     FIREBASE_SERVICE_ACCOUNT → JSON chiave service account Firebase
-     SEASON                   → anno d'inizio stagione (default 2026 = 2026/27)
-     TEAM                     → nome squadra da sincronizzare (default "Lazio")
+   Variabili d'ambiente (GitHub Actions secrets/env):
+     FIREBASE_SERVICE_ACCOUNT → JSON chiave service account Firebase (secret)
+     THESPORTSDB_KEY          → chiave API (opzionale, default "3" pubblica)
+     SEASON                   → es. "2026-2027"
+     LEAGUE_ID                → id lega TheSportsDB (Serie A = 4332)
+     TEAM                     → nome squadra (default "Lazio")
+     TEAM_ID                  → id squadra TheSportsDB (SS Lazio = 133668)
+     ROUNDS                   → numero di giornate (default 38)
    ───────────────────────────────────────────────────────────── */
 import admin from "firebase-admin";
 
-const FD_TOKEN = process.env.FOOTBALL_DATA_TOKEN;
 const SA_JSON = process.env.FIREBASE_SERVICE_ACCOUNT;
-const SEASON = process.env.SEASON || "2026";
+const KEY = process.env.THESPORTSDB_KEY || "3";
+const LEAGUE_ID = process.env.LEAGUE_ID || "4332"; // Serie A
+const SEASON = process.env.SEASON || "2026-2027";
 const TEAM = (process.env.TEAM || "Lazio").trim();
-const COMPETITION_CODE = "SA"; // Serie A su football-data.org
+const TEAM_ID = (process.env.TEAM_ID || "133668").trim(); // SS Lazio
+const ROUNDS = Number(process.env.ROUNDS || 38);
 
-const API_BASE = "https://api.football-data.org/v4";
+const API = `https://www.thesportsdb.com/api/v1/json/${KEY}`;
 
 /* ── Validazione ambiente ─────────────────────────────────────── */
-if (!FD_TOKEN) {
-  console.error("❌ Manca FOOTBALL_DATA_TOKEN (token football-data.org).");
-  process.exit(1);
-}
 if (!SA_JSON) {
   console.error("❌ Manca FIREBASE_SERVICE_ACCOUNT (chiave service account).");
   process.exit(1);
 }
-
 let serviceAccount;
 try {
   serviceAccount = JSON.parse(SA_JSON);
@@ -50,130 +55,96 @@ admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const db = admin.firestore();
 const { Timestamp, FieldValue } = admin.firestore;
 
-/* ── Helpers mapping football-data → schema Netflaxt ──────────── */
+/* ── Helpers mapping TheSportsDB → schema Netflaxt ────────────── */
 
-// È la nostra squadra? (match per sigla TLA o per nome)
-function isOurTeam(team) {
-  if (!team) return false;
-  const target = TEAM.toLowerCase();
-  const name = (team.name || "").toLowerCase();
-  const short = (team.shortName || "").toLowerCase();
-  // Lazio → TLA "LAZ"
-  if (target === "lazio" && (team.tla || "").toUpperCase() === "LAZ") return true;
-  return name.includes(target) || short.includes(target);
+// Nomi TheSportsDB → nomi puliti usati dal sito (per risolvere i loghi)
+const NAME_MAP = {
+  "ac milan": "Milan",
+  "inter milan": "Inter",
+  internazionale: "Inter",
+  "as roma": "Roma",
+  "ss lazio": "Lazio",
+  "juventus fc": "Juventus",
+  "ssc napoli": "Napoli",
+  "us lecce": "Lecce",
+  "torino fc": "Torino",
+  "udinese calcio": "Udinese",
+  "bologna fc": "Bologna",
+  "como 1907": "Como",
+};
+function cleanName(n) {
+  if (!n) return "";
+  const key = n.trim().toLowerCase();
+  if (NAME_MAP[key]) return NAME_MAP[key];
+  const stripped = n
+    .replace(/\b(AC|FC|SS|SSC|AS|US|ACF|Calcio|1907|1909|1913)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return stripped || n.trim();
 }
 
-// Nome da mostrare: shortName è già "Lazio", "Milan", "Inter"… → ottimo
-function displayName(team) {
-  return (team?.shortName || team?.name || "").trim();
-}
-
-// Stato football-data → stato nostro (scheduled | live | finished)
-function mapStatus(fdStatus) {
-  switch (fdStatus) {
-    case "FINISHED":
-    case "AWARDED":
-      return "finished";
-    case "IN_PLAY":
-    case "PAUSED":
-      return "live";
-    default:
-      return "scheduled"; // SCHEDULED, TIMED, POSTPONED, SUSPENDED, CANCELLED
-  }
-}
-
-// L'orario è confermato? (SCHEDULED = solo data, orario da definire)
-function isTimeConfirmed(fdStatus) {
-  return ["TIMED", "IN_PLAY", "PAUSED", "FINISHED", "AWARDED", "SUSPENDED"].includes(
-    fdStatus
+// È la nostra squadra in questo evento?
+function isOurTeam(ev) {
+  if (TEAM_ID && (ev.idHomeTeam === TEAM_ID || ev.idAwayTeam === TEAM_ID)) return true;
+  const t = TEAM.toLowerCase();
+  return (
+    (ev.strHomeTeam || "").toLowerCase().includes(t) ||
+    (ev.strAwayTeam || "").toLowerCase().includes(t)
   );
 }
 
-// Campi di SOLO calendario (mai punteggio/tabellino) da scrivere su Firestore
-function scheduleFields(fm) {
+// Stato evento → stato nostro
+function mapStatus(ev) {
+  const s = (ev.strStatus || "").toLowerCase();
+  const postponed =
+    (ev.strPostponed || "").toLowerCase() === "yes" || s.includes("postp");
+  let status = "scheduled";
+  if (s.includes("finish") || ["ft", "aet", "pen"].includes(s)) status = "finished";
+  else if (["1h", "2h", "ht"].includes(s) || s.includes("live") || s.includes("play"))
+    status = "live";
+  return { status, postponed };
+}
+
+// Calcio d'inizio in UTC (TheSportsDB fornisce dateEvent + strTime in UTC)
+function kickoffFrom(ev) {
+  const date = ev.dateEvent; // "YYYY-MM-DD"
+  if (!date) return { ts: null, timeConfirmed: false };
+  const time = ev.strTime && ev.strTime !== "00:00:00" ? ev.strTime : null;
+  const d = new Date(`${date}T${time || "12:00:00"}Z`);
+  if (Number.isNaN(d.getTime())) return { ts: null, timeConfirmed: false };
+  return { ts: d, timeConfirmed: !!time };
+}
+
+// Campi di SOLO calendario (mai punteggio/tabellino)
+function scheduleFields(ev) {
+  const { status, postponed } = mapStatus(ev);
+  const { ts, timeConfirmed } = kickoffFrom(ev);
   return {
-    homeTeam: displayName(fm.homeTeam),
-    awayTeam: displayName(fm.awayTeam),
-    homeCrest: fm.homeTeam?.crest || null,
-    awayCrest: fm.awayTeam?.crest || null,
+    homeTeam: cleanName(ev.strHomeTeam),
+    awayTeam: cleanName(ev.strAwayTeam),
+    homeCrest: ev.strHomeTeamBadge || null,
+    awayCrest: ev.strAwayTeamBadge || null,
     competition: "Serie A",
-    matchday: fm.matchday ?? null,
-    kickoff: Timestamp.fromDate(new Date(fm.utcDate)),
-    status: mapStatus(fm.status),
-    postponed: ["POSTPONED", "SUSPENDED", "CANCELLED"].includes(fm.status),
-    timeConfirmed: isTimeConfirmed(fm.status),
-    externalId: String(fm.id),
-    source: "football-data",
+    matchday: ev.intRound ? Number(ev.intRound) : null,
+    kickoff: ts ? Timestamp.fromDate(ts) : null,
+    status,
+    postponed,
+    timeConfirmed,
+    externalId: String(ev.idEvent),
+    source: "thesportsdb",
   };
 }
 
-/* ── Fetch dall'API (con diagnostica robusta) ─────────────────── */
-async function api(path) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "X-Auth-Token": FD_TOKEN },
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    const err = new Error(`HTTP ${res.status} ${res.statusText} — ${body.slice(0, 200)}`);
-    err.status = res.status;
-    throw err;
-  }
-  return res.json();
+/* ── Fetch di una giornata ────────────────────────────────────── */
+async function fetchRound(round) {
+  const url = `${API}/eventsround.php?id=${LEAGUE_ID}&r=${round}&s=${SEASON}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+  const data = await res.json();
+  return Array.isArray(data.events) ? data.events : [];
 }
 
-// Scopre qual è la stagione "corrente" che l'API espone per la Serie A
-async function discoverCurrentSeason() {
-  try {
-    const comp = await api(`/competitions/${COMPETITION_CODE}`);
-    const cs = comp.currentSeason;
-    const year = cs?.startDate ? new Date(cs.startDate).getFullYear() : null;
-    console.log(
-      `   Stagione corrente su football-data: ${
-        year ? `${year}/${year + 1}` : "?"
-      } (${cs?.startDate || "?"} → ${cs?.endDate || "?"})`
-    );
-    return year;
-  } catch (e) {
-    console.warn(`   (impossibile leggere la stagione corrente: ${e.message})`);
-    return null;
-  }
-}
-
-// Prende i match: prima prova la stagione richiesta, se l'API risponde
-// 404/403 ripiega sulla stagione corrente (sempre permessa sul piano free)
-async function fetchSeasonMatches(season) {
-  try {
-    const data = await api(`/competitions/${COMPETITION_CODE}/matches?season=${season}`);
-    return { matches: data.matches || [], via: `season=${season}` };
-  } catch (e) {
-    if (e.status === 404 || e.status === 403) {
-      console.log(
-        `   La stagione ${season} non è interrogabile direttamente (HTTP ${e.status}). Provo con la stagione corrente…`
-      );
-      const data = await api(`/competitions/${COMPETITION_CODE}/matches`);
-      return { matches: data.matches || [], via: "stagione corrente" };
-    }
-    throw e;
-  }
-}
-
-/* ── Confronto: c'è davvero qualcosa di cambiato? ─────────────── */
-function kickoffMillis(ts) {
-  if (!ts) return 0;
-  if (typeof ts.toMillis === "function") return ts.toMillis();
-  return 0;
-}
-function hasChanged(existing, next) {
-  return (
-    kickoffMillis(existing.kickoff) !== kickoffMillis(next.kickoff) ||
-    (existing.matchday ?? null) !== (next.matchday ?? null) ||
-    (existing.status || "") !== (next.status || "") ||
-    Boolean(existing.postponed) !== Boolean(next.postponed) ||
-    Boolean(existing.timeConfirmed) !== Boolean(next.timeConfirmed) ||
-    (existing.homeTeam || "") !== (next.homeTeam || "") ||
-    (existing.awayTeam || "") !== (next.awayTeam || "")
-  );
-}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function fmtDate(ts) {
   try {
@@ -188,68 +159,65 @@ function fmtDate(ts) {
     return "—";
   }
 }
+function kickoffMillis(ts) {
+  return ts && typeof ts.toMillis === "function" ? ts.toMillis() : 0;
+}
+function hasChanged(existing, next) {
+  return (
+    kickoffMillis(existing.kickoff) !== kickoffMillis(next.kickoff) ||
+    (existing.matchday ?? null) !== (next.matchday ?? null) ||
+    (existing.status || "") !== (next.status || "") ||
+    Boolean(existing.postponed) !== Boolean(next.postponed) ||
+    Boolean(existing.timeConfirmed) !== Boolean(next.timeConfirmed) ||
+    (existing.homeTeam || "") !== (next.homeTeam || "") ||
+    (existing.awayTeam || "") !== (next.awayTeam || "")
+  );
+}
 
 /* ── Main ─────────────────────────────────────────────────────── */
 async function main() {
-  console.log(
-    `\n🦅 Sync calendario "${TEAM}" · Serie A · stagione richiesta ${SEASON}/${Number(SEASON) + 1}`
-  );
+  console.log(`\n🦅 Sync calendario "${TEAM}" · Serie A ${SEASON} · fonte TheSportsDB`);
 
-  const curYear = await discoverCurrentSeason();
-  const { matches: all, via } = await fetchSeasonMatches(SEASON);
-  console.log(`   Ricevuti ${all.length} match (${via}).`);
-  if (all.length === 0) {
-    console.warn(
-      "⚠️  Nessun match restituito. La stagione potrebbe non essere ancora pubblicata. Nessuna scrittura."
-    );
-    return;
+  // 1) Scarica giornata per giornata e tieni solo le partite della Lazio
+  const ours = [];
+  let roundsWithData = 0;
+  for (let r = 1; r <= ROUNDS; r++) {
+    let events = [];
+    try {
+      events = await fetchRound(r);
+    } catch (e) {
+      console.warn(`   ⚠️  Giornata ${r}: ${e.message}`);
+    }
+    if (events.length) roundsWithData++;
+    ours.push(...events.filter(isOurTeam));
+    await sleep(300); // rispetta il rate limit della chiave gratuita
   }
-
-  // Che stagione abbiamo davvero ricevuto?
-  const loadedYear = all[0]?.season?.startDate
-    ? new Date(all[0].season.startDate).getFullYear()
-    : curYear;
   console.log(
-    `   Stagione dei dati ricevuti: ${loadedYear ? `${loadedYear}/${loadedYear + 1}` : "?"}`
+    `   Giornate con dati: ${roundsWithData}/${ROUNDS} · partite "${TEAM}" trovate: ${ours.length}`
   );
-
-  // Se NON è la stagione che vogliamo, non scriviamo nulla (per non
-  // caricare partite vecchie). Messaggio chiaro per capire il perché.
-  if (loadedYear != null && Number(SEASON) !== loadedYear) {
-    console.warn(
-      `\n⚠️  football-data.org espone ancora la stagione ${loadedYear}/${loadedYear + 1}, ` +
-        `non la ${SEASON}/${Number(SEASON) + 1} richiesta.`
-    );
-    console.warn(
-      "   Il calendario nuovo non è ancora disponibile su questa fonte (piano free).\n" +
-        "   Non scrivo nulla per non mettere partite della stagione sbagliata.\n" +
-        "   → Soluzioni: riprova tra qualche giorno, oppure imposta SEASON sulla stagione corrente.\n"
-    );
-    return;
-  }
-
-  const ours = all.filter((m) => isOurTeam(m.homeTeam) || isOurTeam(m.awayTeam));
-  console.log(`   Di cui "${TEAM}": ${ours.length} partite.`);
   if (ours.length === 0) {
-    console.warn(`⚠️  Nessuna partita di "${TEAM}" trovata. Controlla il nome squadra. Nessuna scrittura.`);
+    console.warn("⚠️  Nessuna partita trovata. Nessuna scrittura.");
     return;
   }
 
+  // 2) Upsert su Firestore per externalId
   const col = db.collection("matches");
   let created = 0;
   let updated = 0;
   let skippedLocked = 0;
   let unchanged = 0;
 
-  for (const fm of ours) {
-    const next = scheduleFields(fm);
+  for (const ev of ours) {
+    const next = scheduleFields(ev);
+    if (!next.kickoff) {
+      console.warn(`   (salto ${next.homeTeam}-${next.awayTeam}: data mancante)`);
+      continue;
+    }
     const snap = await col.where("externalId", "==", next.externalId).limit(1).get();
 
     if (snap.empty) {
       await col.add({
         ...next,
-        // logo: lasciati vuoti → il sito usa i loghi locali (logoForTeam),
-        // con fallback automatico al crest dell'API per le squadre fuori lista
         homeLogo: null,
         awayLogo: null,
         homeScore: null,
@@ -267,21 +235,15 @@ async function main() {
 
     const docRef = snap.docs[0].ref;
     const existing = snap.docs[0].data();
-
-    // Rispetta le scelte dell'admin: risultato finalizzato o match "bloccato"
     if (existing.scored === true || existing.lockedByAdmin === true) {
       skippedLocked++;
       continue;
     }
-
     if (!hasChanged(existing, next)) {
-      // aggiorna comunque syncedAt (heartbeat) senza rumore
       await docRef.set({ syncedAt: FieldValue.serverTimestamp() }, { merge: true });
       unchanged++;
       continue;
     }
-
-    // Solo campi calendario: NON tocchiamo homeScore/awayScore/events/scored/logo
     await docRef.set(
       { ...next, updatedAt: FieldValue.serverTimestamp(), syncedAt: FieldValue.serverTimestamp() },
       { merge: true }
@@ -289,7 +251,7 @@ async function main() {
     updated++;
     const was = fmtDate(existing.kickoff);
     const now = fmtDate(next.kickoff);
-    const when = was !== now ? ` · orario ${was} → ${now}` : "";
+    const when = was !== now ? ` · ${was} → ${now}` : "";
     console.log(`   ~ ${next.homeTeam} – ${next.awayTeam} (${next.matchday}ª) aggiornata${when}`);
   }
 
