@@ -138,8 +138,9 @@ export default defineConfig({
         globIgnores: [
           '**/eagle.png',      // 7.3 MB — animazione easter egg, non serve offline al primo load
           '**/eagle-cry.mp3',  // verso aquila, idem
-          '**/chat-bg.jpg',    // 6+ MB — sfondo decorativo della chat, runtime cache
           '**/version.json',   // file versione: deve essere SEMPRE fresco dalla rete
+          // chat-bg.jpg NON è qui di proposito: ora pesa 228 KB ed è PRECACHED
+          // → lo sfondo chat è sempre disponibile all'istante, niente flash al reload.
         ],
         // Cache runtime per Google Fonts + Cloudinary + asset locali pesanti
         runtimeCaching: [
@@ -195,8 +196,9 @@ export default defineConfig({
             handler: 'NetworkOnly',
           },
           {
-            // Asset locali pesanti (eagle.png, eagle-cry.mp3, chat-bg.jpg)
-            urlPattern: /\/(eagle\.png|eagle-cry\.mp3|chat-bg\.jpg)$/,
+            // Asset locali pesanti non precachati (eagle.png, eagle-cry.mp3).
+            // chat-bg.jpg ora è precachato (228 KB), quindi non serve qui.
+            urlPattern: /\/(eagle\.png|eagle-cry\.mp3)$/,
             handler: 'CacheFirst',
             options: {
               cacheName: 'heavy-assets',
