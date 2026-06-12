@@ -21,6 +21,12 @@ dist-ssr
 .venv/
 .claude/
 
+# Cloudflare Wrangler: cache e segreti locali (NON committare)
+.wrangler/
+**/.wrangler/
+.dev.vars
+**/.dev.vars
+
 # 🔐 Chiavi Firebase service account — NON committare MAI (vanno solo
 # nei GitHub Secrets). Qualsiasi file di questo tipo resta locale.
 *serviceAccount*.json

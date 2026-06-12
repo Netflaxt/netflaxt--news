@@ -1,0 +1,16 @@
+{
+  "name": "netflaxt-live-poller",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker: poller live partite Lazio (API-Football -> Firestore)",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "tail": "wrangler tail",
+    "login": "wrangler login"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

@@ -26,6 +26,8 @@ function updatedMs(match) {
 /** Stato live "valido" del match, o null se non è (più) live. */
 export function getLiveState(match) {
   if (!match?.live) return null;
+  // Se l'admin ha finalizzato il risultato, vince lo stato "finita".
+  if (match.status === "finished") return null;
   const updated = updatedMs(match);
   if (updated && Date.now() - updated > STALE_MS) return null;
   return {

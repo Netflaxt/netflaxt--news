@@ -1,0 +1,15 @@
+name = "netflaxt-live-poller"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+# Gira ogni 2 minuti. Chiama l'API live SOLO se c'è una partita Lazio in
+# corso (controlla prima Firestore, gratis) → resta nei limiti del piano free.
+[triggers]
+crons = ["*/2 * * * *"]
+
+[vars]
+TEAM_ID = "487" # SS Lazio su API-Football
+
+# I secret NON vanno qui. Si impostano con:
+#   npx wrangler secret put APIFOOTBALL_KEY
+#   npx wrangler secret put FIREBASE_SERVICE_ACCOUNT
