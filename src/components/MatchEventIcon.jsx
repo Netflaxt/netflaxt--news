@@ -22,21 +22,26 @@ function CardSvg({ className }) {
   );
 }
 
-// Infortunio: croce medica dentro un cerchio (stile line).
-function MedicalSvg({ className }) {
+// Infortunio: ambulanza (vista laterale) con croce e ruote, stile line.
+function AmbulanceSvg({ className }) {
   return (
     <svg
       className={className}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.9}
+      strokeWidth={1.7}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 8.2v7.6M8.2 12h7.6" />
+      <path d="M10 10H6" />
+      <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2" />
+      <path d="M19 18h2a1 1 0 0 0 1-1v-3.28a1 1 0 0 0-.684-.948l-1.923-.641a1 1 0 0 1-.578-.502l-1.539-3.076A1 1 0 0 0 16.382 8H14" />
+      <path d="M8 8v4" />
+      <path d="M9 18h6" />
+      <circle cx="17" cy="18" r="2" />
+      <circle cx="7" cy="18" r="2" />
     </svg>
   );
 }
@@ -47,7 +52,7 @@ const MAP = {
   owngoal: { Cmp: BallIcon, color: "text-error" },
   yellow: { Cmp: CardSvg, color: "text-warning" },
   red: { Cmp: CardSvg, color: "text-error" },
-  injury: { Cmp: MedicalSvg, color: "text-accent" },
+  injury: { Cmp: AmbulanceSvg, color: "text-accent" },
 };
 
 /** Icona colorata per un tipo di evento del tabellino. */
