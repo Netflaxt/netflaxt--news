@@ -39,7 +39,7 @@ export default function EagleEasterEgg() {
         alt=""
         aria-hidden="true"
         decoding="async"
-        fetchpriority="high"
+        fetchPriority="high"
         style={{
           position: "fixed",
           width: "1px",
