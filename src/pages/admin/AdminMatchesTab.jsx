@@ -20,6 +20,7 @@ import { clearAllPredictions, clearLeaderboard } from "../../utils/predictions";
 import { logoForTeam, SERIE_A_TEAMS_2026_27 } from "../../utils/teamLogos";
 import { uploadImageToCloudinary } from "../../utils/imageUpload";
 import { CalendarIcon, EmptyIcon } from "../../components/icons";
+import AdminButton from "../../components/admin/AdminButton";
 
 function CrestPreview({ name, logo }) {
   const src = logo || logoForTeam(name);
@@ -373,9 +374,9 @@ export default function AdminMatchesTab({ onToast }) {
             <input type="datetime-local" value={form.kickoff} onChange={(e) => setF("kickoff", e.target.value)} className="adminInput" />
           </div>
         </div>
-        <button type="submit" disabled={creating} className="px-5 py-2.5 bg-accent text-text-inverse font-bold rounded-md hover:shadow-[0_0_24px_-4px_rgba(56,189,248,0.6)] transition text-sm disabled:opacity-50">
+        <AdminButton type="submit" variant="accent" icon="plus" disabled={creating}>
           {creating ? "Aggiunta..." : "Aggiungi partita"}
-        </button>
+        </AdminButton>
       </form>
 
       {/* ── Azzera classifica generale ── */}
@@ -465,8 +466,8 @@ export default function AdminMatchesTab({ onToast }) {
                       <input type="datetime-local" value={editData.kickoff} onChange={(e) => setEditData({ ...editData, kickoff: e.target.value })} className="adminInput" />
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => saveEdit(m.id)} disabled={busy === m.id} className="px-4 py-2 bg-accent text-text-inverse font-bold rounded-md text-sm disabled:opacity-50">Salva</button>
-                      <button onClick={() => setEditingId(null)} className="px-4 py-2 border border-border text-text-secondary font-semibold rounded-md text-sm hover:bg-bg-elevated">Annulla</button>
+                      <AdminButton onClick={() => saveEdit(m.id)} disabled={busy === m.id} variant="save" icon="check">Salva</AdminButton>
+                      <AdminButton onClick={() => setEditingId(null)} variant="ghost" icon="x">Annulla</AdminButton>
                     </div>
                   </div>
                 ) : (
@@ -774,21 +775,13 @@ function ResultEditor({ match, onClose, onSaved }) {
 
         {/* Footer */}
         <div className="p-5 border-t border-border flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            disabled={busy}
-            className="px-5 py-2.5 border border-border text-text-secondary font-semibold rounded-md text-sm hover:bg-bg-elevated hover:text-text-primary transition disabled:opacity-50"
-          >
+          <AdminButton onClick={onClose} disabled={busy} variant="ghost" icon="x">
             Annulla
-          </button>
-          <button
-            onClick={save}
-            disabled={busy}
-            className="px-5 py-2.5 bg-success text-white font-bold rounded-md text-sm hover:brightness-110 transition disabled:opacity-50 inline-flex items-center gap-2"
-          >
+          </AdminButton>
+          <AdminButton onClick={save} disabled={busy} variant="save" icon={busy ? undefined : "check"}>
             {busy && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
             Salva risultato e assegna punti
-          </button>
+          </AdminButton>
         </div>
       </div>
     </div>

@@ -1,0 +1,50 @@
+# Dependabot: controlla AUTOMATICAMENTE se le librerie del sito hanno
+# aggiornamenti e apre una Pull Request su GitHub quando ce ne sono.
+# Gli aggiornamenti minori/patch (sicuri) vengono raggruppati in un'unica PR.
+# Gli aggiornamenti "major" (potenzialmente con cambi rotti) restano separati,
+# così si possono testare con calma prima di applicarli.
+# Le PR di SICUREZZA (vulnerabilità) vengono aperte subito, a parte.
+version: 2
+updates:
+  # Librerie del sito (React, Vite, Firebase, ecc.)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    labels:
+      - "dependencies"
+    groups:
+      # Un'unica PR per tutti gli aggiornamenti sicuri (minor + patch)
+      aggiornamenti-sicuri:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Script di sync calendario (firebase-admin)
+  - package-ecosystem: "npm"
+    directory: "/scripts"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(scripts)"
+    labels:
+      - "dependencies"
+    groups:
+      aggiornamenti-sicuri:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Aggiornamenti delle GitHub Actions (es. actions/checkout)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
