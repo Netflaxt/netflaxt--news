@@ -5,6 +5,7 @@
    - Finalizzazione risultato → assegna i punti ai pronostici (#25)
    ───────────────────────────────────────────────────────────── */
 import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   subscribeMatches,
   createMatch,
@@ -692,7 +693,10 @@ function ResultEditor({ match, onClose, onSaved }) {
     }
   };
 
-  return (
+  // Portal su document.body: il modal esce da qualsiasi contenitore con
+  // transform/filter (es. il wrapper .nf-page-enter) che altrimenti
+  // intrappolerebbe il position:fixed facendolo finire fuori schermo.
+  return createPortal(
     <div className="fixed inset-0 z-[60] bg-bg-base/90 backdrop-blur-md flex items-center justify-center p-4">
       <div className="bg-bg-surface rounded-2xl border border-border w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Header */}
@@ -784,6 +788,7 @@ function ResultEditor({ match, onClose, onSaved }) {
           </AdminButton>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -279,10 +279,14 @@ select:focus-visible {
   color: var(--color-text-primary);
 }
 
-/* Fade page-transition al cambio route (applicato dal wrapper App) */
+/* Fade page-transition al cambio route (applicato dal wrapper App).
+   IMPORTANTE: il keyframe finale usa `transform: none` (non translateY(0)):
+   un transform diverso da `none` resterebbe applicato (fill: both) e
+   creerebbe un "containing block" che intrappola i modal `position: fixed`
+   dei figli (es. "Inserisci risultato"), facendoli finire fuori schermo. */
 @keyframes nf-page-in {
   from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: none; }
 }
 .nf-page-enter {
   animation: nf-page-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;

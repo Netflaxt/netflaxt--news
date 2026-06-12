@@ -7,10 +7,10 @@
     <meta name="theme-color" content="#05070D" />
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-    <!-- 🦅 Preload aquila + verso: priorità massima per partenza istantanea
-         dell'easter egg. Vengono scaricati in parallelo al JS. -->
+    <!-- 🦅 Preload immagine aquila: priorità massima per partenza istantanea
+         dell'easter egg. Il verso (mp3) lo precarica la JS (preloadEagleCry)
+         perché `as="audio"` non è supportato dai browser come preload. -->
     <link rel="preload" as="image" href="/eagle.png" fetchpriority="high" />
-    <link rel="preload" as="audio" href="/eagle-cry.mp3" fetchpriority="high" />
 
     <title>Netflaxt News · La casa dei tifosi laziali</title>
     <meta name="description" content="News, analisi, calciomercato, calendario e chat live sulla S.S. Lazio. Fan site indipendente biancoceleste." />
