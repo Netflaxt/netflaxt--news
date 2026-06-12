@@ -105,7 +105,7 @@ export default function PronosticiCTA() {
             {user ? (
               <Link
                 to="/calendario"
-                className="group inline-flex items-center gap-2 px-6 py-3.5 bg-accent text-text-inverse font-bold rounded-md transition-all duration-300 hover:shadow-[0_0_32px_-4px_rgba(56,189,248,0.7)] hover:-translate-y-0.5"
+                className="nf-shimmer group inline-flex items-center gap-2 px-6 py-3.5 bg-accent text-text-inverse font-bold rounded-md transition-all duration-300 hover:shadow-[0_0_32px_-4px_rgba(56,189,248,0.7)] hover:-translate-y-0.5"
               >
                 Fai il tuo pronostico
                 <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>
@@ -113,7 +113,7 @@ export default function PronosticiCTA() {
             ) : (
               <Link
                 to="/login"
-                className="group inline-flex items-center gap-2 px-6 py-3.5 bg-accent text-text-inverse font-bold rounded-md transition-all duration-300 hover:shadow-[0_0_32px_-4px_rgba(56,189,248,0.7)] hover:-translate-y-0.5"
+                className="nf-shimmer group inline-flex items-center gap-2 px-6 py-3.5 bg-accent text-text-inverse font-bold rounded-md transition-all duration-300 hover:shadow-[0_0_32px_-4px_rgba(56,189,248,0.7)] hover:-translate-y-0.5"
               >
                 Registrati e gioca
                 <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>

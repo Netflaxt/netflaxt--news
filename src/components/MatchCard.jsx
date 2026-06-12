@@ -207,8 +207,19 @@ export default function MatchCard({ match, children }) {
   // Etichetta: data provvisoria (lontana) vs solo orario mancante
   const provLabel = far ? "Data da confermare" : "Orario da definire";
 
+  // Spotlight: l'alone biancoceleste segue il cursore (il CSS lo mostra
+  // solo su desktop con mouse → su touch non compare, niente costo mobile).
+  const handleSpotlight = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    e.currentTarget.style.setProperty("--mx", `${e.clientX - r.left}px`);
+    e.currentTarget.style.setProperty("--my", `${e.clientY - r.top}px`);
+  };
+
   return (
-    <div className="rounded-2xl bg-bg-surface border border-border overflow-hidden transition-all hover:border-border-strong">
+    <div
+      onMouseMove={handleSpotlight}
+      className="relative nf-spotlight rounded-2xl bg-bg-surface border border-border overflow-hidden transition-all hover:border-border-strong"
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-subtle">
         <div className="flex items-center gap-2 min-w-0">

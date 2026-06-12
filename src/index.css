@@ -316,3 +316,74 @@ select:focus-visible {
     scroll-behavior: auto !important;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Polish biancoceleste — shimmer CTA, spotlight card, aurora hero.
+   GPU-friendly (transform/opacity), e già spenti da reduced-motion.
+   ───────────────────────────────────────────────────────────── */
+
+/* 1) Shimmer: un riflesso di luce che passa ogni tanto sui CTA accent */
+.nf-shimmer { position: relative; overflow: hidden; }
+.nf-shimmer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  width: 45%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+  transform: skewX(-18deg);
+  pointer-events: none;
+  animation: nf-glint 4.5s ease-in-out infinite;
+}
+@keyframes nf-glint {
+  0%        { left: -60%; }
+  30%, 100% { left: 130%; }
+}
+
+/* 2) Spotlight: alone biancoceleste che segue il cursore.
+   SOLO desktop con mouse (su touch non compare → niente lag mobile). */
+@media (hover: hover) and (pointer: fine) {
+  .nf-spotlight::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(200px circle at var(--mx, 50%) var(--my, 0%),
+                rgba(56, 189, 248, 0.12), transparent 65%);
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .nf-spotlight:hover::before { opacity: 1; }
+}
+
+/* 3) Aurora: bagliori biancocelesti che si muovono lentamente dietro l'hero */
+.nf-aurora { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.nf-aurora::before,
+.nf-aurora::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  will-change: transform;
+}
+.nf-aurora::before {
+  width: 520px; height: 380px; top: -140px; left: 18%;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.40), transparent 70%);
+  animation: nf-aurora-a 16s ease-in-out infinite alternate;
+}
+.nf-aurora::after {
+  width: 440px; height: 340px; top: -90px; right: 12%;
+  background: radial-gradient(circle, rgba(14, 165, 233, 0.34), transparent 70%);
+  animation: nf-aurora-b 20s ease-in-out infinite alternate;
+}
+@keyframes nf-aurora-a {
+  from { transform: translate(-40px, 0) scale(1); }
+  to   { transform: translate(60px, 36px) scale(1.18); }
+}
+@keyframes nf-aurora-b {
+  from { transform: translate(30px, 0) scale(1.12); }
+  to   { transform: translate(-50px, 24px) scale(1); }
+}

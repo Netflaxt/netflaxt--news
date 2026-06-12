@@ -14,8 +14,9 @@ import { collection, onSnapshot } from "firebase/firestore";
 import { TrophyIcon, EmptyIcon } from "../components/icons";
 import { setSEO, resetSEO } from "../utils/seo";
 
-function Avatar({ photoURL, displayName }) {
+function Avatar({ photoURL, displayName, size = "md" }) {
   const [broken, setBroken] = useState(false);
+  const cls = size === "lg" ? "w-16 h-16 text-lg" : "w-10 h-10 text-xs";
   if (photoURL && !broken) {
     return (
       <img
@@ -23,14 +24,117 @@ function Avatar({ photoURL, displayName }) {
         alt={displayName || ""}
         referrerPolicy="no-referrer"
         onError={() => setBroken(true)}
-        className="w-10 h-10 rounded-full object-cover bg-bg-elevated"
+        className={`${cls} rounded-full object-cover bg-bg-elevated`}
       />
     );
   }
   const initials = (displayName || "?").slice(0, 2).toUpperCase();
   return (
-    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent to-accent-deep flex items-center justify-center text-xs font-black text-text-inverse">
+    <div
+      className={`${cls} rounded-full bg-gradient-to-br from-accent to-accent-deep flex items-center justify-center font-black text-text-inverse`}
+    >
       {initials}
+    </div>
+  );
+}
+
+/* Contatore che sale da 0 al valore (eased). Reduced-motion: il giro è
+   istantaneo (rAF singolo) → mostra subito il numero finale. */
+function CountUp({ value }) {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    let raf;
+    const start = performance.now();
+    const dur = 900;
+    const tick = (t) => {
+      const p = Math.min(1, (t - start) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setN(Math.round((value || 0) * eased));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  return <>{n}</>;
+}
+
+/* Una posizione del podio (1°, 2° o 3°). */
+function PodiumSpot({ entry, rank, usernamesByUid, currentUid }) {
+  const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : "🥉";
+  const baseH = rank === 1 ? "h-24 sm:h-28" : rank === 2 ? "h-16 sm:h-20" : "h-12 sm:h-16";
+  const isFirst = rank === 1;
+  const isMe = entry.uid === currentUid;
+  const uname = usernamesByUid[entry.uid];
+  const nameNode = uname ? (
+    <Link to={`/u/${uname}`} className="hover:text-accent transition">
+      {entry.displayName}
+    </Link>
+  ) : (
+    entry.displayName
+  );
+  return (
+    <div className="flex flex-col items-center justify-end">
+      <div className="relative mb-2.5">
+        <div
+          className={
+            isFirst
+              ? "rounded-full p-0.5 ring-2 ring-accent shadow-[0_0_28px_-4px_rgba(56,189,248,0.7)]"
+              : ""
+          }
+        >
+          <Avatar
+            photoURL={entry.photoURL}
+            displayName={entry.displayName}
+            size={isFirst ? "lg" : "md"}
+          />
+        </div>
+        <span className="absolute -bottom-1.5 -right-1.5 text-xl">{medal}</span>
+      </div>
+      <div
+        className={`text-sm font-bold truncate max-w-[7.5rem] text-center ${
+          isMe ? "text-accent" : "text-text-primary"
+        }`}
+      >
+        {nameNode}
+        {isMe && <span className="ml-1 text-[9px] uppercase tracking-wider">tu</span>}
+      </div>
+      <div
+        className="text-2xl sm:text-3xl font-black text-text-primary tabular-nums leading-none mt-0.5"
+        style={{ fontFamily: "var(--font-display)" }}
+      >
+        <CountUp value={entry.totalPoints} />
+      </div>
+      <div className="text-[9px] uppercase tracking-wider text-text-muted font-bold mb-2.5">
+        punti
+      </div>
+      <div
+        className={`w-full ${baseH} rounded-t-xl border border-b-0 flex items-start justify-center pt-2 ${
+          isFirst ? "border-accent/40 bg-accent/10" : "border-border bg-bg-surface"
+        }`}
+      >
+        <span
+          className="text-2xl font-black leading-none"
+          style={{
+            fontFamily: "var(--font-display)",
+            color: isFirst ? "var(--color-accent)" : "var(--color-text-muted)",
+          }}
+        >
+          {rank}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* Podio Top-3 (mostrato solo se ci sono almeno 3 in classifica). */
+function Podium({ board, usernamesByUid, currentUid }) {
+  if (board.length < 3) return null;
+  const [first, second, third] = board;
+  return (
+    <div className="mb-10 grid grid-cols-3 gap-2 sm:gap-4 items-end max-w-lg mx-auto">
+      <PodiumSpot entry={second} rank={2} usernamesByUid={usernamesByUid} currentUid={currentUid} />
+      <PodiumSpot entry={first} rank={1} usernamesByUid={usernamesByUid} currentUid={currentUid} />
+      <PodiumSpot entry={third} rank={3} usernamesByUid={usernamesByUid} currentUid={currentUid} />
     </div>
   );
 }
@@ -188,6 +292,10 @@ export default function Classifica() {
     return board.find((b) => b.uid === user.uid) || null;
   }, [board, user]);
 
+  // Con almeno 3 in classifica mostriamo il podio e la lista parte dalla 4ª
+  const showPodium = board.length >= 3;
+  const listEntries = showPodium ? board.slice(3) : board;
+
   return (
     <main className="min-h-screen bg-bg-base text-text-primary relative overflow-hidden">
       <div className="absolute -top-40 left-0 w-[600px] h-[500px] rounded-full bg-accent/8 blur-[140px] pointer-events-none" />
@@ -218,7 +326,7 @@ export default function Classifica() {
             </Link>
             <Link
               to="/calendario"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-accent text-text-inverse text-xs font-bold uppercase tracking-wider hover:shadow-[0_0_20px_-4px_rgba(56,189,248,0.6)] transition"
+              className="nf-shimmer inline-flex items-center gap-2 px-4 py-2 rounded-md bg-accent text-text-inverse text-xs font-bold uppercase tracking-wider hover:shadow-[0_0_20px_-4px_rgba(56,189,248,0.6)] transition"
             >
               Vai a pronosticare →
             </Link>
@@ -308,6 +416,16 @@ export default function Classifica() {
           </div>
         ) : (
           <>
+            {/* Podio Top-3 */}
+            <Podium board={board} usernamesByUid={usernamesByUid} currentUid={user?.uid} />
+
+            {listEntries.length > 0 && (
+            <>
+            {showPodium && (
+              <div className="text-[10px] uppercase tracking-[0.3em] text-text-muted font-bold mb-3">
+                Classifica completa
+              </div>
+            )}
             {/* Header tabella (desktop) */}
             <div className="hidden sm:grid grid-cols-[2.5rem_1fr_5rem_5rem_5rem] gap-3 items-center px-4 pb-2 text-[10px] uppercase tracking-[0.22em] text-text-muted font-bold">
               <div>#</div>
@@ -318,10 +436,11 @@ export default function Classifica() {
             </div>
 
             <ul className="space-y-2">
-              {board.map((b, i) => {
+              {listEntries.map((b, i) => {
+                const rank = (showPodium ? 3 : 0) + i + 1;
                 const isMe = user && b.uid === user.uid;
                 const medal =
-                  i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : null;
+                  rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : null;
                 const linkName = usernamesByUid[b.uid];
                 const nameNode = linkName ? (
                   <Link
@@ -350,7 +469,7 @@ export default function Classifica() {
                           <span className="text-xl">{medal}</span>
                         ) : (
                           <span className="text-sm font-bold text-text-muted tabular-nums">
-                            {i + 1}
+                            {rank}
                           </span>
                         )}
                       </div>
@@ -473,6 +592,8 @@ export default function Classifica() {
                 );
               })}
             </ul>
+            </>
+            )}
           </>
         )}
       </div>

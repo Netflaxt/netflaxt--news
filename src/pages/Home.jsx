@@ -1,6 +1,7 @@
 import NewsletterCTA from "../components/NewsletterCTA";
 import InstallAppCard from "../components/InstallAppCard";
 import PronosticiCTA from "../components/PronosticiCTA";
+import NextMatchBar from "../components/NextMatchBar";
 import { SkeletonArticleCard } from "../components/Skeleton";
 import BookmarkButton from "../components/BookmarkButton";
 import PollWidget from "../components/PollWidget";
@@ -95,7 +96,8 @@ export default function Home() {
       <section className="relative border-b border-border-subtle">
         {/* Glow di sfondo */}
         <div className="absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[800px] h-[500px] rounded-full bg-accent/12 blur-[140px]" />
+          {/* Aurora biancoceleste che si muove piano dietro il titolo */}
+          <div className="nf-aurora" />
           <div className="absolute bottom-0 -left-40 w-[500px] h-[500px] rounded-full bg-accent-deep/10 blur-[120px]" />
           {/* Grid sottilissima */}
           <div
@@ -235,6 +237,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* ═══════════════ BARRA PROSSIMA PARTITA ═══════════════ */}
+      <NextMatchBar />
 
       {/* ═══════════════════ ULTIMI ARTICOLI ═══════════════════ */}
       <section className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-24">
