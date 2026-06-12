@@ -5,6 +5,7 @@
    ───────────────────────────────────────────────────────────── */
 import React, { useEffect, useState } from "react";
 import { logoForTeam } from "../utils/teamLogos";
+import { MatchEventIcon, eventPrefix } from "./MatchEventIcon";
 
 function TimeUnit({ value, label }) {
   return (
@@ -111,8 +112,6 @@ function TeamCrest({ name, logo, crest }) {
   );
 }
 
-const EVENT_ICON = { yellow: "🟨", red: "🟥", injury: "🚑" };
-
 function MatchEvents({ events }) {
   const homeGoals = [];
   const awayGoals = [];
@@ -120,7 +119,7 @@ function MatchEvents({ events }) {
   events.forEach((e) => {
     if (["goal", "penalty", "owngoal"].includes(e.type)) {
       const benefits = e.type === "owngoal" ? (e.team === "home" ? "away" : "home") : e.team;
-      const entry = { player: e.player, minute: e.minute, pen: e.type === "penalty", og: e.type === "owngoal" };
+      const entry = { type: e.type, player: e.player, minute: e.minute };
       (benefits === "home" ? homeGoals : awayGoals).push(entry);
     } else {
       others.push(e);
@@ -130,8 +129,23 @@ function MatchEvents({ events }) {
   if (homeGoals.length === 0 && awayGoals.length === 0 && others.length === 0) return null;
 
   const fmtMin = (m) => (m != null ? `${m}'` : "");
-  const goalLine = (g) =>
-    `${g.player || "?"} ${fmtMin(g.minute)}${g.pen ? " (rig.)" : ""}${g.og ? " (aut.)" : ""}`.trim();
+
+  const goalRow = (g, i, right) => {
+    const prefix = eventPrefix(g.type);
+    return (
+      <div
+        key={i}
+        className={`flex items-center gap-1.5 min-w-0 ${right ? "flex-row-reverse" : ""}`}
+      >
+        <MatchEventIcon type={g.type} className="w-3.5 h-3.5" />
+        <span className="truncate text-text-secondary">
+          {prefix && <span className="font-bold text-text-muted">{prefix} </span>}
+          {g.player || "?"}
+          {g.minute != null && <span className="text-text-muted tabular-nums"> {g.minute}'</span>}
+        </span>
+      </div>
+    );
+  };
 
   return (
     <div className="rounded-lg border border-border bg-bg-base/40 p-3">
@@ -140,28 +154,29 @@ function MatchEvents({ events }) {
       </div>
       {(homeGoals.length > 0 || awayGoals.length > 0) && (
         <div className="grid grid-cols-2 gap-3 text-xs">
-          <div className="space-y-1 min-w-0">
-            {homeGoals.map((g, i) => (
-              <div key={i} className="text-text-secondary truncate">⚽ {goalLine(g)}</div>
-            ))}
+          <div className="space-y-1.5 min-w-0">
+            {homeGoals.map((g, i) => goalRow(g, i, false))}
           </div>
-          <div className="space-y-1 min-w-0 text-right">
-            {awayGoals.map((g, i) => (
-              <div key={i} className="text-text-secondary truncate">{goalLine(g)} ⚽</div>
-            ))}
+          <div className="space-y-1.5 min-w-0">
+            {awayGoals.map((g, i) => goalRow(g, i, true))}
           </div>
         </div>
       )}
       {others.length > 0 && (
         <div className="mt-2 pt-2 border-t border-border-subtle flex flex-wrap gap-1.5 justify-center">
-          {others.map((e, i) => (
-            <span
-              key={i}
-              className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-bg-elevated border border-border text-text-secondary"
-            >
-              {EVENT_ICON[e.type] || "•"} {e.player || ""} {fmtMin(e.minute)}
-            </span>
-          ))}
+          {others.map((e, i) => {
+            const prefix = eventPrefix(e.type);
+            return (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded-full bg-bg-elevated border border-border text-text-secondary"
+              >
+                <MatchEventIcon type={e.type} className="w-3 h-3" />
+                {prefix && <span className="font-bold">{prefix}</span>}
+                {e.player || ""} {fmtMin(e.minute)}
+              </span>
+            );
+          })}
         </div>
       )}
     </div>

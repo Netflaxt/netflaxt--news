@@ -6,6 +6,7 @@
    ───────────────────────────────────────────────────────────── */
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { MatchEventIcon } from "../../components/MatchEventIcon";
 import {
   subscribeMatches,
   createMatch,
@@ -613,10 +614,15 @@ function EventRow({ ev, match, onChange, onRemove }) {
           {match.awayTeam}
         </button>
       </div>
+      {/* Icona colorata del tipo selezionato (il menu nativo non può
+          mostrare SVG nelle voci: l'icona la mostriamo qui accanto) */}
+      <span className="shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-md bg-bg-elevated border border-border">
+        <MatchEventIcon type={ev.type} className="w-5 h-5" />
+      </span>
       <select value={ev.type} onChange={(e) => onChange({ type: e.target.value })} className={`${RE_INPUT} shrink-0`}>
         {EVENT_TYPES.map((t) => (
           <option key={t.key} value={t.key}>
-            {t.icon} {t.label}
+            {t.label}
           </option>
         ))}
       </select>
