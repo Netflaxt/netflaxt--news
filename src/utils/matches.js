@@ -132,6 +132,33 @@ export async function setMatchLock(id, locked) {
   });
 }
 
+/**
+ * Imposta/aggiorna lo stato LIVE di una partita. Usato dal poller live
+ * (Cloudflare Worker) e dal bottone "Simula live" dell'admin per testare.
+ * status: "1H"|"HT"|"2H"|"ET"|"BT"|"P"|"FT"|... (codici API-Football)
+ */
+export async function setLiveState(id, { status, minute, extra = null, home = null, away = null }) {
+  if (!id) throw new Error("id mancante");
+  await updateDoc(doc(db, "matches", id), {
+    live: true,
+    liveStatus: status || "2H",
+    liveMinute: minute != null ? Number(minute) : null,
+    liveExtra: extra != null ? Number(extra) : null,
+    liveHome: home != null ? Number(home) : null,
+    liveAway: away != null ? Number(away) : null,
+    liveUpdatedAt: serverTimestamp(),
+  });
+}
+
+/** Spegne lo stato LIVE di una partita. */
+export async function clearLiveState(id) {
+  if (!id) throw new Error("id mancante");
+  await updateDoc(doc(db, "matches", id), {
+    live: false,
+    liveUpdatedAt: serverTimestamp(),
+  });
+}
+
 export async function deleteMatch(id) {
   if (!id) return;
   await deleteDoc(doc(db, "matches", id));

@@ -14,6 +14,8 @@ import {
   deleteMatch,
   finalizeMatch,
   setMatchLock,
+  setLiveState,
+  clearLiveState,
   scoreFromEvents,
   EVENT_TYPES,
   COMPETITIONS,
@@ -303,6 +305,23 @@ export default function AdminMatchesTab({ onToast }) {
     }
   };
 
+  const toggleSimLive = async (m) => {
+    setBusy(m.id);
+    try {
+      if (m.live) {
+        await clearLiveState(m.id);
+        onToast && onToast("Live spento", "success");
+      } else {
+        await setLiveState(m.id, { status: "2H", minute: 67, home: 1, away: 0 });
+        onToast && onToast("Live simulato: 2° tempo, 67' (1-0)", "success");
+      }
+    } catch {
+      onToast && onToast("Errore stato live", "danger");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const toggleLock = async (m) => {
     setBusy(m.id);
     try {
@@ -539,6 +558,18 @@ export default function AdminMatchesTab({ onToast }) {
                           {m.lockedByAdmin ? "🔓 Sblocca da sync" : "🔒 Blocca da sync"}
                         </button>
                       )}
+                      <button
+                        onClick={() => toggleSimLive(m)}
+                        disabled={busy === m.id}
+                        title="Test: imposta/azzera lo stato LIVE per provare il ticker sul calendario"
+                        className={`px-3 py-1.5 text-xs font-bold border rounded-md transition disabled:opacity-50 ${
+                          m.live
+                            ? "border-error/50 text-error hover:bg-error/10"
+                            : "border-border text-text-secondary hover:bg-bg-elevated hover:text-text-primary"
+                        }`}
+                      >
+                        {m.live ? "⏹ Ferma live" : "🔴 Simula live"}
+                      </button>
                       {deleteConfirm === m.id ? (
                         <span className="inline-flex items-center gap-1">
                           <button onClick={() => doDelete(m.id)} disabled={busy === m.id} className="px-3 py-1.5 text-xs font-bold bg-red-500 text-white rounded-md hover:bg-red-600 disabled:opacity-50">Conferma</button>

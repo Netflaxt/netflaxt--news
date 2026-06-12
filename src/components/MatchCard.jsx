@@ -6,6 +6,7 @@
 import React, { useEffect, useState } from "react";
 import { logoForTeam } from "../utils/teamLogos";
 import { MatchEventIcon, eventPrefix } from "./MatchEventIcon";
+import LiveBadge, { getLiveState } from "./LiveBadge";
 
 function TimeUnit({ value, label }) {
   return (
@@ -209,12 +210,13 @@ const PROVISIONAL_DAYS = 35;
 export default function MatchCard({ match, children }) {
   const kickoff = match.kickoff?.toDate?.() || (match.kickoff ? new Date(match.kickoff) : null);
   const finished = match.status === "finished";
-  const live = match.status === "live";
+  const liveSt = getLiveState(match); // stato live dal poller (o null)
+  const isLiveNow = !!liveSt;
   const hasScore = match.homeScore != null && match.awayScore != null;
   // Partita "lontana" → data ancora provvisoria
   const far =
     !finished &&
-    !live &&
+    !isLiveNow &&
     kickoff &&
     kickoff.getTime() - Date.now() > PROVISIONAL_DAYS * 86400000;
   // Confermata = ha un orario certo dal sync E non è troppo lontana
@@ -245,14 +247,8 @@ export default function MatchCard({ match, children }) {
             <span className="text-[10px] text-text-muted">· {match.matchday}ª giornata</span>
           )}
         </div>
-        {live ? (
-          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-error">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-error opacity-70 animate-ping" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-error" />
-            </span>
-            Live
-          </span>
+        {isLiveNow ? (
+          <LiveBadge match={match} className="text-[10px]" />
         ) : finished ? (
           <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">Finita</span>
         ) : (
@@ -275,11 +271,11 @@ export default function MatchCard({ match, children }) {
 
           {/* Center */}
           <div className="flex flex-col items-center">
-            {hasScore || live ? (
+            {hasScore || isLiveNow ? (
               <div className="text-3xl font-black tabular-nums text-text-primary flex items-center gap-2">
-                <span>{match.homeScore ?? 0}</span>
+                <span>{isLiveNow ? liveSt.home ?? 0 : match.homeScore ?? 0}</span>
                 <span className="text-text-muted">:</span>
-                <span>{match.awayScore ?? 0}</span>
+                <span>{isLiveNow ? liveSt.away ?? 0 : match.awayScore ?? 0}</span>
               </div>
             ) : (
               <div className="px-3 py-1.5 rounded-lg bg-bg-elevated border border-border text-xs font-bold text-text-secondary tabular-nums">
@@ -301,8 +297,8 @@ export default function MatchCard({ match, children }) {
           </div>
         </div>
 
-        {/* Countdown (solo partite in programma) */}
-        {!finished && !live && (
+        {/* Countdown (solo partite in programma, non live/finite) */}
+        {!finished && !isLiveNow && (
           <MatchCountdown kickoff={kickoff} timeConfirmed={timeConfirmed} label={provLabel} />
         )}
       </div>

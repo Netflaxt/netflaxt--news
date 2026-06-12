@@ -10,6 +10,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { subscribeMatches } from "../utils/matches";
 import { logoForTeam } from "../utils/teamLogos";
+import LiveBadge, { getLiveState } from "./LiveBadge";
 
 const PROVISIONAL_DAYS = 35;
 
@@ -55,16 +56,18 @@ export default function NextMatchBar() {
     const unsub = subscribeMatches(
       (list) => {
         const t = Date.now();
+        // Priorità: una partita ATTUALMENTE in corso (live dal poller)
+        const liveOne = list.find((m) => getLiveState(m));
         const up = list
           .filter((m) => {
             const k = m.kickoff?.toDate?.()?.getTime?.() || 0;
-            return m.status !== "finished" && m.status !== "live" && k > t;
+            return m.status !== "finished" && k > t;
           })
           .sort(
             (a, b) =>
               (a.kickoff?.toMillis?.() || 0) - (b.kickoff?.toMillis?.() || 0)
           );
-        setMatch(up[0] || null);
+        setMatch(liveOne || up[0] || null);
       },
       () => {}
     );
@@ -79,6 +82,9 @@ export default function NextMatchBar() {
   if (!match) return null;
   const kickoff = match.kickoff?.toDate?.();
   if (!kickoff) return null;
+
+  const liveSt = getLiveState(match);
+  const isLiveNow = !!liveSt;
 
   const diff = kickoff.getTime() - now;
   const far = match.timeConfirmed === false || diff > PROVISIONAL_DAYS * 86400000;
@@ -98,13 +104,23 @@ export default function NextMatchBar() {
         <div className="relative flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 sm:px-6 py-4">
           {/* Etichetta */}
           <div className="flex items-center gap-3 min-w-0">
-            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-accent">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full rounded-full bg-accent opacity-70 animate-ping" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+            {isLiveNow ? (
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-error">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-error opacity-75 animate-ping" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-error" />
+                </span>
+                Partita in corso
               </span>
-              Prossima partita
-            </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-accent">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-accent opacity-70 animate-ping" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+                </span>
+                Prossima partita
+              </span>
+            )}
             <span className="hidden md:inline text-[10px] text-text-muted uppercase tracking-wider">
               {match.competition}
               {match.matchday != null ? ` · ${match.matchday}ª` : ""}
@@ -119,7 +135,13 @@ export default function NextMatchBar() {
                 {match.homeTeam}
               </span>
             </div>
-            <span className="text-text-muted font-black text-xs">VS</span>
+            {isLiveNow ? (
+              <span className="text-text-primary font-black text-base tabular-nums px-1">
+                {liveSt.home ?? 0} - {liveSt.away ?? 0}
+              </span>
+            ) : (
+              <span className="text-text-muted font-black text-xs">VS</span>
+            )}
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-sm font-bold text-text-primary truncate max-w-[90px] text-right md:text-left">
                 {match.awayTeam}
@@ -128,9 +150,11 @@ export default function NextMatchBar() {
             </div>
           </div>
 
-          {/* Countdown */}
+          {/* Countdown / Live */}
           <div className="flex items-center gap-3">
-            {far ? (
+            {isLiveNow ? (
+              <LiveBadge match={match} className="text-sm" />
+            ) : far ? (
               <div className="text-right leading-none">
                 <div
                   className="text-xl font-black text-text-primary tabular-nums"
