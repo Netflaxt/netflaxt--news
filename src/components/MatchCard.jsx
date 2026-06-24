@@ -213,16 +213,18 @@ export default function MatchCard({ match, children }) {
   const liveSt = getLiveState(match); // stato live dal poller (o null)
   const isLiveNow = !!liveSt;
   const hasScore = match.homeScore != null && match.awayScore != null;
-  // Partita "lontana" → data ancora provvisoria
+  // La fonte API-Football dice da sola se l'orario è ufficiale (timeConfirmed).
+  // Per le fonti più vecchie (TheSportsDB/manuali) usiamo la stima per distanza
+  // (>5 settimane = probabilmente provvisoria).
+  const sourceKnowsTime = match.source === "api-football";
   const far =
+    !sourceKnowsTime &&
     !finished &&
     !isLiveNow &&
     kickoff &&
     kickoff.getTime() - Date.now() > PROVISIONAL_DAYS * 86400000;
-  // Confermata = ha un orario certo dal sync E non è troppo lontana
   const timeConfirmed = match.timeConfirmed !== false && !far;
-  // Etichetta: data provvisoria (lontana) vs solo orario mancante
-  const provLabel = far ? "Data da confermare" : "Orario da definire";
+  const provLabel = "Data da confermare";
 
   // Spotlight: l'alone biancoceleste segue il cursore (il CSS lo mostra
   // solo su desktop con mouse → su touch non compare, niente costo mobile).

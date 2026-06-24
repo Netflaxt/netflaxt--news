@@ -1,55 +1,48 @@
 # 🦅 Auto-sync Calendario Lazio — Guida
 
 Questo sistema **carica e tiene aggiornato da solo** il calendario della Lazio
-(Serie A) sul sito: prende i dati da **TheSportsDB** (gratis) e li scrive su
-Firestore con un piccolo "programmino" che gira su **GitHub Actions** 2 volte al
-giorno. Se la Lega sposta o anticipa una partita, entro poche ore è aggiornata
-sul sito **senza che tu faccia niente**.
+(Serie A) sul sito: prende i dati da **API-Football** (la stessa fonte del minuto
+live) e li scrive su Firestore con un "programmino" che gira su **GitHub Actions**
+2 volte al giorno. Anticipi e posticipi ufficiali compaiono **da soli**.
 
-> ✅ Setup già completato. La fonte **TheSportsDB** usa una **chiave gratuita
-> pubblica** (`"3"`): **non serve nessun token aggiuntivo**. L'unico secret che
-> serve è la chiave Firebase, che hai già impostato.
+> **Perché API-Football:** una sola chiamata prende tutte le 38 partite, è una
+> fonte professionale (più aggiornata di TheSportsDB) e dice da sola se l'orario
+> è **ufficiale** (`NS`) o ancora **da definire** (`TBD`) → il sito mostra
+> "Data da confermare" solo quando serve davvero.
 
 ---
 
 ## ✅ Cosa fa, in breve
 
-- **Primo avvio** → carica tutte le ~38 partite della Lazio (Calendario + Pronostici, con countdown).
-- **Ogni giorno** → controlla TheSportsDB e aggiorna date/orari spostati.
-- **Non tocca mai** i risultati che inserisci a mano nel pannello admin.
-- Puoi **bloccare** una singola partita dal pannello admin (🔒) se vuoi gestirla tu.
+- **Carica** tutte le ~38 partite della Lazio (Calendario + Pronostici, countdown).
+- **Ogni giorno** aggiorna date/orari spostati con quelli **ufficiali**.
+- **Non tocca mai** i risultati che inserisci a mano, né i campi del minuto live.
+- Puoi **bloccare** una singola partita dal pannello admin (🔒).
 
 ---
 
-## 🔧 Come funziona (tecnico)
+## 🔧 Setup (una volta sola)
 
-- Script: `scripts/sync-lazio-calendar.mjs`
-- Automazione: `.github/workflows/sync-calendar.yml` (cron 2x/giorno + run manuale)
-- Fonte dati: TheSportsDB, scaricata **una giornata alla volta** (endpoint
-  `eventsround`) così si ottengono tutte le 38 giornate complete anche con la
-  chiave gratuita.
-- Scrive su Firestore (`matches`) via `firebase-admin` (service account).
-- Gira su **Firebase Spark** (niente Cloud Functions/Blaze).
+### 1) Aggiungi il secret della chiave API-Football su GitHub
+È la **stessa chiave** che hai usato per il poller live (account api-football.com).
 
-### Secret su GitHub (repo → Settings → Secrets and variables → Actions)
+1. Repo GitHub → **Settings** → **Secrets and variables** → **Actions**
+2. **New repository secret**:
 
-| Name                       | Valore                                   | Obbligatorio |
-|----------------------------|------------------------------------------|--------------|
-| `FIREBASE_SERVICE_ACCOUNT` | tutto il JSON della chiave service account | ✅ Sì (già fatto) |
-| `THESPORTSDB_KEY`          | una tua chiave TheSportsDB                | ⛔ No (default gratis `"3"`) |
+| Name              | Valore                          |
+|-------------------|---------------------------------|
+| `APIFOOTBALL_KEY` | la tua chiave API-Football      |
 
-> `THESPORTSDB_KEY` serve solo se un domani vuoi una chiave personale (più veloce/
-> senza limiti condivisi). Senza, usa la chiave pubblica gratuita.
+> Il secret `FIREBASE_SERVICE_ACCOUNT` ce l'hai già dal setup precedente.
+> (Se avevi `THESPORTSDB_KEY`, ora non serve più — puoi lasciarlo o cancellarlo.)
 
----
-
-## ▶️ Lanciare / rilanciare il sync
-
-1. Repo GitHub → scheda **Actions** → a sinistra **"Sync calendario Lazio"**
-2. Bottone **Run workflow** → branch `main` → **Run workflow**
-3. Dopo ~1 minuto apri il log (**sync → Esegui sync**): dovresti leggere
-   `Giornate con dati: 38/38 · partite "Lazio" trovate: 38` e `Nuove: 38`.
-4. Apri il sito → **Calendario**: ci sono tutte le partite della Lazio 🎉
+### 2) Lancia il sync
+1. Repo GitHub → scheda **Actions** → **"Sync calendario Lazio"**
+2. **Run workflow** → branch `main` → **Run workflow**
+3. Dopo ~30 sec apri il log (**Esegui sync**): dovresti leggere tipo
+   `Ricevute 38 partite` e `Adottate: 38` (la prima volta adotta i match già
+   esistenti aggiornandoli con le date ufficiali — **niente doppioni**).
+4. Apri il sito → **Calendario**: ora vedi le **date e gli orari ufficiali**. 🎉
 
 Da qui in poi è **tutto automatico** (ogni mattina e ogni sera).
 
@@ -57,8 +50,9 @@ Da qui in poi è **tutto automatico** (ogni mattina e ogni sera).
 
 ## 🛠️ Nel pannello admin
 
-- Le partite caricate dal sync hanno il badge **🔄 auto**.
-- Se l'orario esatto non è ancora confermato, vedi **"orario da definire"**.
+- Le partite del sync hanno il badge **🔄 auto**.
+- Se l'orario non è ancora ufficiale (API-Football lo segna `TBD`), il sito
+  mostra **"Data da confermare"** (e si aggiorna da solo quando esce l'ufficiale).
 - **🔒 Blocca da sync**: blocca una partita e l'auto-sync non la toccherà più.
 - I risultati che inserisci a fine partita **non vengono mai sovrascritti**.
 
@@ -66,14 +60,14 @@ Da qui in poi è **tutto automatico** (ogni mattina e ogni sera).
 
 ## ❓ Problemi comuni
 
-- **Log dice "Nessuna partita trovata"** → TheSportsDB potrebbe avere temporanei
-  problemi o la stagione/lega è cambiata. Riprova; intanto puoi inserire partite a mano.
-- **Errori HTTP ripetuti** → la chiave pubblica `"3"` è condivisa e a volte
-  limitata; in tal caso imposta il secret `THESPORTSDB_KEY` con una tua chiave.
-- **Errore service account** → ricontrolla che `FIREBASE_SERVICE_ACCOUNT` contenga
-  tutto il JSON.
+- **Log: "Nessuna partita restituita"** → controlla `SEASON`/`LEAGUE_ID`/`TEAM_ID`
+  nel workflow (2026 / 135 / 487) o riprova più tardi.
+- **Errore HTTP 401/403** → chiave `APIFOOTBALL_KEY` errata o assente.
+- **Errore service account** → ricontrolla `FIREBASE_SERVICE_ACCOUNT`.
+- **Limite chiamate**: piano free 100/giorno. Il sync ne usa 1-2; il poller live
+  ~75 nei giorni di partita → si resta sotto i 100.
 
 ---
 
 Tutto gratis, resta sul piano **Firebase Spark**.
-Fonte dati: [TheSportsDB](https://www.thesportsdb.com/).
+Fonte dati: [API-Football](https://www.api-football.com/).

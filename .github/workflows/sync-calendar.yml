@@ -1,8 +1,8 @@
 name: Sync calendario Lazio
 
 # Sincronizza automaticamente il calendario Serie A della Lazio da
-# football-data.org verso Firestore. Carica i match e aggiorna gli
-# spostamenti di data/ora SENZA intervento manuale.
+# API-Football verso Firestore. Carica i match e aggiorna gli
+# spostamenti di data/ora (anticipi/posticipi) SENZA intervento manuale.
 
 on:
   # 2 volte al giorno (orari UTC). Gli spostamenti di Serie A si sanno
@@ -39,11 +39,9 @@ jobs:
         working-directory: scripts
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          # Chiave TheSportsDB: opzionale. Se il secret non è impostato,
-          # lo script usa la chiave pubblica gratuita "3".
-          THESPORTSDB_KEY: ${{ secrets.THESPORTSDB_KEY }}
-          SEASON: "2026-2027"
-          LEAGUE_ID: "4332"
-          TEAM: "Lazio"
-          TEAM_ID: "133668"
+          # Stessa chiave API-Football usata dal poller live.
+          APIFOOTBALL_KEY: ${{ secrets.APIFOOTBALL_KEY }}
+          SEASON: "2026"
+          LEAGUE_ID: "135"  # Serie A
+          TEAM_ID: "487"    # SS Lazio
         run: node sync-lazio-calendar.mjs

@@ -87,7 +87,11 @@ export default function NextMatchBar() {
   const isLiveNow = !!liveSt;
 
   const diff = kickoff.getTime() - now;
-  const far = match.timeConfirmed === false || diff > PROVISIONAL_DAYS * 86400000;
+  // API-Football dà il flag reale; per fonti vecchie stima per distanza.
+  const sourceKnowsTime = match.source === "api-football";
+  const far =
+    match.timeConfirmed === false ||
+    (!sourceKnowsTime && diff > PROVISIONAL_DAYS * 86400000);
 
   const days = Math.max(0, Math.floor(diff / 86400000));
   const hours = Math.max(0, Math.floor((diff % 86400000) / 3600000));
