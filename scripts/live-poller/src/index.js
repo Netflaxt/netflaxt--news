@@ -58,21 +58,19 @@ async function poll(env) {
   const m = candidates.find((c) => fval(c.fields.status) !== "finished");
   if (!m) return { skipped: "nessuna partita nella finestra" };
 
-  // 2) Dati live da API-Football (solo ora consumiamo una chiamata)
-  const fx = await fetchFixture(env);
-  if (!fx) return { skipped: "nessuna fixture dall'API oggi" };
-
-  const short = fx.fixture?.status?.short;
-  const elapsed = fx.fixture?.status?.elapsed ?? null;
-  const extra = fx.fixture?.status?.extra ?? null;
-  const home = fx.goals?.home ?? 0;
-  const away = fx.goals?.away ?? 0;
-
+  // 2) Dati live da API-Football. Usiamo ?live=all (accessibile sul piano
+  //    GRATIS) e filtriamo la Lazio: ?season=2026 sul free è bloccato.
+  const fx = await fetchLiveLazio(env);
   const curLive = fval(m.fields.live) === true;
   const curStatus = fval(m.fields.liveStatus);
 
-  // 3) Scrivi su Firestore in base allo stato
-  if (IN_PLAY.includes(short)) {
+  // 3) In gioco (la partita compare tra le live): aggiorna minuto/recupero/risultato
+  if (fx) {
+    const short = fx.fixture?.status?.short || "2H";
+    const elapsed = fx.fixture?.status?.elapsed ?? null;
+    const extra = fx.fixture?.status?.extra ?? null;
+    const home = fx.goals?.home ?? 0;
+    const away = fx.goals?.away ?? 0;
     await patchMatch(auth, m.id, {
       live: true,
       liveStatus: short,
@@ -85,43 +83,34 @@ async function poll(env) {
     return { updated: m.id, short, elapsed, extra, score: `${home}-${away}` };
   }
 
-  if (FINISHED.includes(short)) {
-    // Scrivi "fine partita" UNA volta sola, poi lascia che diventi stale.
-    if (curLive && curStatus === short) return { skipped: "già FT" };
-    await patchMatch(auth, m.id, {
-      live: true,
-      liveStatus: short,
-      liveMinute: elapsed,
-      liveExtra: null,
-      liveHome: home,
-      liveAway: away,
-      liveUpdatedAt: new Date(),
-    });
-    return { finished: m.id, short, score: `${home}-${away}` };
+  // La Lazio non è tra le partite live:
+  //  - se la NOSTRA era live → è appena finita: scrivi "FT" una volta sola
+  //    (poi diventa stale dopo 15 min, oppure l'admin finalizza il risultato);
+  //  - altrimenti non è ancora iniziata → niente.
+  if (curLive && curStatus !== "FT") {
+    await patchMatch(auth, m.id, { liveStatus: "FT", liveUpdatedAt: new Date() });
+    return { finished: m.id };
   }
-
-  // Non iniziata / rinviata: se era segnata live, spegni.
-  if (curLive) {
-    await patchMatch(auth, m.id, { live: false, liveUpdatedAt: new Date() });
-    return { cleared: m.id, short };
-  }
-  return { skipped: "non iniziata", short };
+  return { skipped: "non in corso", curLive };
 }
 
-/* ── API-Football ─────────────────────────────────────────────── */
-async function fetchFixture(env) {
+/* ── API-Football: partite LIVE (?live=all). A differenza di ?season=…
+   questo endpoint è accessibile anche sul piano gratuito. ──────── */
+async function fetchLiveLazio(env) {
   const teamId = env.TEAM_ID || "487";
-  const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Rome",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  const url = `https://v3.football.api-sports.io/fixtures?team=${teamId}&date=${today}`;
-  const res = await fetch(url, { headers: { "x-apisports-key": env.APIFOOTBALL_KEY } });
+  const res = await fetch("https://v3.football.api-sports.io/fixtures?live=all", {
+    headers: { "x-apisports-key": env.APIFOOTBALL_KEY },
+  });
   if (!res.ok) throw new Error(`API-Football HTTP ${res.status}`);
   const data = await res.json();
-  return (data.response || [])[0] || null;
+  const list = Array.isArray(data.response) ? data.response : [];
+  return (
+    list.find(
+      (fx) =>
+        String(fx.teams?.home?.id) === teamId ||
+        String(fx.teams?.away?.id) === teamId
+    ) || null
+  );
 }
 
 /* ── Firestore REST (auth service account) ────────────────────── */
