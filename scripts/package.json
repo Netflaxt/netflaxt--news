@@ -8,6 +8,6 @@
     "sync": "node sync-lazio-calendar.mjs"
   },
   "dependencies": {
-    "firebase-admin": "^13.0.2"
+    "firebase-admin": "^14.2.0"
   }
 }
