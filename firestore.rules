@@ -124,6 +124,18 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // ─── NEWSLETTER ────────────────────────────────
+    // L'indirizzo email è anche l'id del documento: così l'iscrizione
+    // doppia viene rifiutata da sola (sarebbe una modifica, non una
+    // creazione) senza dover rendere leggibile l'elenco.
+    // La lettura resta al solo admin: sono dati personali di terzi.
+    match /newsletter/{indirizzo} {
+      allow read, update, delete: if isAdmin();
+      allow create: if request.resource.data.email is string
+        && request.resource.data.email.size() < 200
+        && request.resource.data.keys().hasOnly(['email', 'createdAt', 'confirmed', 'source']);
+    }
+
     // ─── MODERAZIONE (ricorsi al ban) ──────────────
     // Il codice salva il campo `uid` (non `userId`). Le rules devono
     // coincidere altrimenti la create/read falliscono.

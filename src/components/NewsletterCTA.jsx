@@ -1,18 +1,13 @@
 /* ─────────────────────────────────────────────────────────────
    src/components/NewsletterCTA.jsx
-   Form di iscrizione newsletter — salva email in Firestore
-   (collection `newsletter/{auto-id}`).
+   Form di iscrizione newsletter — salva l'email in Firestore usando
+   l'indirizzo stesso come identificativo: `newsletter/{email}`.
+   In questo modo il controllo dei doppioni non richiede di leggere
+   l'elenco degli iscritti, che resta accessibile al solo admin.
    ───────────────────────────────────────────────────────────── */
 import React, { useState } from "react";
 import { db } from "../firebase/firebase";
-import {
-  collection,
-  addDoc,
-  query,
-  where,
-  getDocs,
-  serverTimestamp,
-} from "firebase/firestore";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { MailIcon } from "./icons";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -35,25 +30,30 @@ export default function NewsletterCTA({ variant = "card" }) {
     setErrorMsg("");
 
     try {
-      // Controllo duplicati
-      const existing = await getDocs(
-        query(collection(db, "newsletter"), where("email", "==", trimmed))
+      /* L'email è anche l'identificativo dell'iscrizione.
+         Così non dobbiamo LEGGERE l'elenco per scoprire se uno è già
+         iscritto: leggere quell'elenco significherebbe permettere a
+         chiunque di scaricarsi gli indirizzi di tutti gli iscritti.
+         Se l'iscrizione esiste già, la scrittura viene rifiutata dalle
+         regole di sicurezza e lo interpretiamo come "già iscritto". */
+      await setDoc(
+        doc(db, "newsletter", trimmed),
+        {
+          email: trimmed,
+          createdAt: serverTimestamp(),
+          confirmed: false,
+          source: window.location.pathname,
+        },
+        // niente merge: dev'essere una creazione, non una modifica
+        { merge: false }
       );
-      if (!existing.empty) {
-        setStatus("duplicate");
-        return;
-      }
-
-      // Inserisce nuova iscrizione
-      await addDoc(collection(db, "newsletter"), {
-        email: trimmed,
-        createdAt: serverTimestamp(),
-        confirmed: false,
-        source: window.location.pathname,
-      });
       setStatus("success");
       setEmail("");
     } catch (err) {
+      if (err?.code === "permission-denied") {
+        setStatus("duplicate");
+        return;
+      }
       console.error("Errore iscrizione newsletter:", err);
       setStatus("error");
       setErrorMsg("Errore tecnico. Riprova tra qualche secondo.");
