@@ -46,7 +46,6 @@ import ChatMessageNotifier from "./components/ChatMessageNotifier";
 import { useAuth } from "./context/AuthContext";
 import useEnsureUserDoc from "./hooks/useEnsureUserDoc";
 import useDeviceTracking from "./hooks/useDeviceTracking";
-import useTwemoji from "./hooks/useTwemoji";
 import { initAnalytics, syncConsent, trackPageView } from "./utils/analytics";
 
 /* Scroll-to-top + page fade-in al cambio route */
@@ -76,8 +75,10 @@ function App() {
   }, [user?.uid]);
   const location = useLocation();
 
-  // Emoji uguali e a colori su tutti i dispositivi (Twemoji)
-  useTwemoji();
+  /* La conversione delle emoji in immagini è stata rimossa il 23/08/2026:
+     riscriveva il DOM alle spalle di React e mandava in errore l'intera
+     pagina (schermata "Palla fuori" a ogni pubblicazione di un articolo).
+     Le emoji ora sono quelle native del dispositivo. Vedi hooks/useTwemoji.js */
 
   // Inizializza analytics se l'utente ha già dato consenso in precedenza
   useEffect(() => {
