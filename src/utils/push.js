@@ -3,11 +3,9 @@
    Web Push (Firebase Cloud Messaging) — lato client.
    - getMessaging dinamico (cache-friendly)
    - request permission, generate FCM token, salvataggio in Firestore
-     su users/{uid}.pushTokens (array di {token, ua, createdAt})
-   IMPORTANTE: l'invio effettivo da admin richiede una function
-   server-side (Cloud Functions o endpoint esterno) con la chiave
-   service-account. Da implementare quando il dominio è attivo.
-   Per ora salviamo i destinatari in:
+     su users/{uid}.pushTokens (array di {token, deviceId, ua, createdAt})
+   L'invio vero avviene nel Worker Cloudflare (scripts/live-poller):
+   legge la coda pushQueue e spedisce via FCM.
      pushQueue/{id} = { title, body, url, audience, createdAt, status }
    ───────────────────────────────────────────────────────────── */
 import app, { db } from "../firebase/firebase";
@@ -18,8 +16,8 @@ import {
   addDoc,
   collection,
   serverTimestamp,
-  arrayUnion,
 } from "firebase/firestore";
+import { getDeviceId } from "./devices";
 
 /* VAPID key — generata in Firebase Console → Cloud Messaging.
    Senza VAPID il getToken fallisce. Lasciamo placeholder finché
@@ -84,20 +82,84 @@ export async function enablePush(uid) {
 
   if (!token) throw new Error("Impossibile generare token push");
 
-  // 4) Salva token su Firestore
+  await salvaToken(uid, token);
+  return token;
+}
+
+/**
+ * Salva il collegamento di QUESTO dispositivo, sostituendo il precedente.
+ *
+ * Non usiamo arrayUnion: l'oggetto salvato contiene la data, quindi ogni
+ * salvataggio ne aggiungerebbe uno nuovo anche per lo stesso telefono, e
+ * l'elenco si riempirebbe di voci morte (è già successo: da 2 dispositivi
+ * reali erano diventate 6 registrazioni).
+ */
+async function salvaToken(uid, token) {
+  const deviceId = getDeviceId();
+  const snap = await getDoc(doc(db, "users", uid));
+  const attuali = (snap.exists() && snap.data().pushTokens) || [];
+
+  // Via il vecchio collegamento di questo dispositivo e gli eventuali
+  // doppioni dello stesso token registrati altrove.
+  const altri = attuali.filter(
+    (t) => t && t.token && t.token !== token && t.deviceId !== deviceId
+  );
+
   await setDoc(
     doc(db, "users", uid),
     {
-      pushTokens: arrayUnion({
-        token,
-        ua: navigator.userAgent,
-        createdAt: new Date().toISOString(),
-      }),
+      pushTokens: [
+        ...altri,
+        {
+          token,
+          deviceId,
+          ua: navigator.userAgent,
+          createdAt: new Date().toISOString(),
+        },
+      ],
     },
     { merge: true }
   );
+}
 
-  return token;
+/**
+ * Rinnovo silenzioso all'avvio dell'app.
+ *
+ * I collegamenti alle notifiche scadono (reinstallazione, aggiornamenti di
+ * sistema, pulizia dati del browser). Senza questo controllo l'utente se ne
+ * accorgerebbe solo smettendo di ricevere le notifiche. Qui il token viene
+ * riletto a ogni avvio e, se è cambiato, aggiornato: nessun popup, nessuna
+ * richiesta di permesso, tutto invisibile.
+ *
+ * Non fa nulla se l'utente non ha mai attivato le notifiche.
+ */
+export async function refreshPushToken(uid) {
+  try {
+    if (!uid || !isPushSupported()) return;
+    if (currentPermission() !== "granted") return; // mai attivate o negate
+
+    const reg = await registerServiceWorker();
+    const { getToken } = await import("firebase/messaging");
+    const messaging = await loadMessaging();
+    const token = await getToken(messaging, {
+      vapidKey: VAPID_KEY,
+      serviceWorkerRegistration: reg || undefined,
+    });
+    if (!token) return;
+
+    const snap = await getDoc(doc(db, "users", uid));
+    const attuali = (snap.exists() && snap.data().pushTokens) || [];
+    const deviceId = getDeviceId();
+    const giaCorretto = attuali.some(
+      (t) => t?.token === token && t?.deviceId === deviceId
+    );
+    if (giaCorretto) return; // tutto a posto, niente scritture inutili
+
+    await salvaToken(uid, token);
+  } catch {
+    // Silenzioso di proposito: è un controllo di manutenzione, non deve
+    // mai disturbare l'utente né bloccare l'avvio dell'app.
+  }
 }
 
 export async function getUserPushTokens(uid) {

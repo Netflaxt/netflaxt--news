@@ -33,6 +33,7 @@ const Privacy = lazy(() => import("./pages/Privacy"));
 
 import ErrorBoundary from "./components/ErrorBoundary";
 import PushNudge from "./components/PushNudge";
+import { refreshPushToken } from "./utils/push";
 import CookieBanner from "./components/CookieBanner";
 import InstallPrompt from "./components/InstallPrompt";
 import SiteStatusModal from "./components/SiteStatusModal";
@@ -64,6 +65,14 @@ function App() {
   const { user } = useAuth();
   useEnsureUserDoc(user);
   useDeviceTracking(user);
+
+  // I collegamenti alle notifiche scadono (reinstallazioni, aggiornamenti di
+  // sistema). Li rinnoviamo a ogni avvio per chi le ha già attivate, così non
+  // smettono di arrivare senza che nessuno se ne accorga. È silenzioso: non
+  // chiede permessi e non mostra nulla.
+  useEffect(() => {
+    if (user?.uid) refreshPushToken(user.uid);
+  }, [user?.uid]);
   const location = useLocation();
 
   // Emoji uguali e a colori su tutti i dispositivi (Twemoji)
