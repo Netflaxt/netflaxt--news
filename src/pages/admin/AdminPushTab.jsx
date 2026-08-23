@@ -7,7 +7,7 @@
    ───────────────────────────────────────────────────────────── */
 import React, { useEffect, useState } from "react";
 import { db } from "../../firebase/firebase";
-import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, limit, doc, getDoc } from "firebase/firestore";
 import { enqueuePushNotification } from "../../utils/push";
 
 export default function AdminPushTab({ onToast }) {
@@ -19,6 +19,8 @@ export default function AdminPushTab({ onToast }) {
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [subscribers, setSubscribers] = useState(0);
+  // Ultimo "battito" del servizio che spedisce le notifiche
+  const [ultimoGiro, setUltimoGiro] = useState(undefined);
 
   useEffect(() => {
     (async () => {
@@ -33,6 +35,16 @@ export default function AdminPushTab({ onToast }) {
           return s + (Array.isArray(t) ? t.length : 0);
         }, 0);
         setSubscribers(subs);
+
+        // Il servizio che spedisce scrive qui a ogni giro (ogni 2 minuti).
+        // Se la lettura non è permessa dalle regole, semplicemente non
+        // mostriamo la spia: non è un errore da segnalare all'admin.
+        try {
+          const s = await getDoc(doc(db, "sistema", "livePoller"));
+          setUltimoGiro(s.exists() ? s.data()?.ultimaEsecuzione?.toDate?.() || null : null);
+        } catch {
+          setUltimoGiro(null);
+        }
       } catch (e) {
         console.error(e);
       } finally {
@@ -43,11 +55,29 @@ export default function AdminPushTab({ onToast }) {
 
   const handleSend = async (e) => {
     e.preventDefault();
+    if (sending) return; // doppio click sul bottone
+
+    // Protezione contro l'invio ripetuto dello stesso messaggio: una
+    // notifica arriva a tutti gli iscritti, mandarla due volte per errore
+    // è il modo più rapido per farsi disattivare le notifiche.
+    const identico = queue.find(
+      (m) =>
+        m.title === title.trim() &&
+        m.body === body.trim() &&
+        Date.now() - (m.createdAt?.toDate?.()?.getTime?.() || 0) < 10 * 60 * 1000
+    );
+    if (identico) {
+      const conferma = window.confirm(
+        "Hai già inviato questa stessa notifica pochi minuti fa.\n\nVuoi davvero rimandarla a tutti?"
+      );
+      if (!conferma) return;
+    }
+
     setSending(true);
     try {
       const ref = await enqueuePushNotification({ title, body, url, audience });
       onToast?.(
-        "Notifica messa in coda. Verrà inviata dal backend.",
+        "Notifica in coda: arriverà entro 2 minuti.",
         "success"
       );
       setQueue((q) => [
@@ -168,6 +198,8 @@ export default function AdminPushTab({ onToast }) {
             numero di dispositivi raggiunti).
           </div>
 
+          <StatoServizio ultimoGiro={ultimoGiro} />
+
           <button
             type="submit"
             disabled={sending}
@@ -222,6 +254,41 @@ export default function AdminPushTab({ onToast }) {
           })
         )}
       </div>
+    </div>
+  );
+}
+
+/* Spia di funzionamento del servizio che spedisce le notifiche e aggiorna
+   la partita in diretta. Scrive un "battito" a ogni giro (2 minuti): se la
+   data è vecchia, qualcosa si è inceppato e conviene saperlo PRIMA di una
+   partita, non durante. */
+function StatoServizio({ ultimoGiro }) {
+  if (ultimoGiro === undefined) return null; // ancora in caricamento
+  if (ultimoGiro === null) return null; // lettura non permessa: niente spia
+
+  const minuti = Math.floor((Date.now() - ultimoGiro.getTime()) / 60000);
+  const ok = minuti < 10;
+  const quando =
+    minuti < 1 ? "poco fa" : minuti < 60 ? `${minuti} min fa` : `${Math.floor(minuti / 60)} ore fa`;
+
+  return (
+    <div
+      className={`mt-3 p-3 rounded-lg border text-xs leading-relaxed ${
+        ok
+          ? "bg-bg-elevated border-border text-text-secondary"
+          : "bg-warning/10 border-warning/40 text-warning"
+      }`}
+    >
+      <span className={`inline-block w-2 h-2 rounded-full mr-2 ${ok ? "bg-success" : "bg-warning"}`} />
+      {ok ? (
+        <>Servizio attivo · ultimo controllo <strong>{quando}</strong></>
+      ) : (
+        <>
+          <strong>Attenzione:</strong> l'ultimo controllo risale a{" "}
+          <strong>{quando}</strong>. Il servizio potrebbe essersi fermato:
+          notifiche e minuto in diretta potrebbero non aggiornarsi.
+        </>
+      )}
     </div>
   );
 }

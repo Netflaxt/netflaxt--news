@@ -71,6 +71,21 @@ async function eseguiTutto(env) {
     out.notifiche = { errore: e.message };
   }
 
+  /* Lascia traccia dell'ultima esecuzione. Serve ad accorgersi se il
+     Worker si è fermato: se questa data è vecchia di ore, qualcosa non
+     va (il pannello admin la mostra). Senza, un blocco resterebbe
+     invisibile finché non si nota che il minuto non avanza. */
+  try {
+    await patchDoc(auth, "sistema/livePoller", {
+      ultimaEsecuzione: new Date(),
+      esito: out.live?.errore || out.notifiche?.errore ? "errore" : "ok",
+    });
+    out.battito = "ok";
+  } catch (e) {
+    /* il battito non deve mai far fallire il lavoro vero */
+    out.battito = `errore: ${e.message}`.slice(0, 200);
+  }
+
   return out;
 }
 

@@ -298,24 +298,43 @@ async function inviaFcm(auth, token, { titolo, testo, url, tag }) {
     },
   };
 
-  try {
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${auth.token}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-    if (res.ok) return { ok: true };
-    // Teniamo il motivo: senza, un invio fallito è invisibile e diventa
-    // impossibile capire perché le notifiche non arrivano.
-    const dettaglio = (await res.text()).slice(0, 300);
-    console.error(`FCM ${res.status}: ${dettaglio}`);
-    return { ok: false, stato: res.status, dettaglio };
-  } catch (e) {
-    return { ok: false, dettaglio: e.message };
+  /* Un tentativo in più sugli errori PASSEGGERI (server occupato, limite
+     di frequenza, rete). Senza, un intoppo momentaneo di Firebase faceva
+     perdere la notifica per sempre su quel dispositivo.
+     Non si riprova sugli errori definitivi (404 = dispositivo inesistente,
+     403 = permessi): sarebbe solo tempo sprecato. */
+  const passeggero = (stato) => stato === 429 || (stato >= 500 && stato <= 599);
+
+  for (let tentativo = 1; tentativo <= 2; tentativo++) {
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${auth.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) return { ok: true };
+
+      // Teniamo il motivo: senza, un invio fallito è invisibile e diventa
+      // impossibile capire perché le notifiche non arrivano.
+      const dettaglio = (await res.text()).slice(0, 300);
+      if (passeggero(res.status) && tentativo === 1) {
+        await new Promise((r) => setTimeout(r, 1500));
+        continue;
+      }
+      console.error(`FCM ${res.status}: ${dettaglio}`);
+      return { ok: false, stato: res.status, dettaglio };
+    } catch (e) {
+      if (tentativo === 1) {
+        await new Promise((r) => setTimeout(r, 1500));
+        continue;
+      }
+      return { ok: false, dettaglio: e.message };
+    }
   }
+  return { ok: false, dettaglio: "invio non riuscito" };
 }
 
 /* Invio di prova verso tutti i dispositivi registrati, con esito

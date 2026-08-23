@@ -133,26 +133,56 @@ async function salvaToken(uid, token) {
  *
  * Non fa nulla se l'utente non ha mai attivato le notifiche.
  */
+const VERSIONE_PUSH_KEY = "netflaxt:pushBuildId";
+
 export async function refreshPushToken(uid) {
   try {
     if (!uid || !isPushSupported()) return;
     if (currentPermission() !== "granted") return; // mai attivate o negate
 
     const reg = await registerServiceWorker();
-    const { getToken } = await import("firebase/messaging");
+    const { getToken, deleteToken } = await import("firebase/messaging");
     const messaging = await loadMessaging();
+
+    /* Dopo un aggiornamento del sito il collegamento va RIGENERATO.
+       Il motivo è insidioso: il codice identificativo resta identico lato
+       dispositivo (quindi sembra tutto a posto), ma il canale a cui punta
+       è stato invalidato e le notifiche non arrivano più. Finché non lo si
+       ricrea a mano, il telefono resta muto — è esattamente quello che è
+       successo il 23/08/2026 dopo aver aggiornato l'app.
+       Perciò: se la versione del sito è cambiata, buttiamo via il vecchio
+       collegamento e ne creiamo uno nuovo. */
+    const versione = String(typeof __BUILD_ID__ !== "undefined" ? __BUILD_ID__ : "");
+    let versionePrecedente = null;
+    try {
+      versionePrecedente = localStorage.getItem(VERSIONE_PUSH_KEY);
+    } catch {
+      /* localStorage non disponibile: procediamo senza forzare */
+    }
+    const appAggiornata = !!versionePrecedente && versionePrecedente !== versione;
+
+    if (appAggiornata) {
+      await deleteToken(messaging).catch(() => {});
+    }
+
     const token = await getToken(messaging, {
       vapidKey: VAPID_KEY,
       serviceWorkerRegistration: reg || undefined,
     });
     if (!token) return;
 
+    try {
+      localStorage.setItem(VERSIONE_PUSH_KEY, versione);
+    } catch {
+      /* niente da fare, riproverà al prossimo avvio */
+    }
+
     const snap = await getDoc(doc(db, "users", uid));
     const attuali = (snap.exists() && snap.data().pushTokens) || [];
     const deviceId = getDeviceId();
-    const giaCorretto = attuali.some(
-      (t) => t?.token === token && t?.deviceId === deviceId
-    );
+    const giaCorretto =
+      !appAggiornata &&
+      attuali.some((t) => t?.token === token && t?.deviceId === deviceId);
     if (giaCorretto) return; // tutto a posto, niente scritture inutili
 
     await salvaToken(uid, token);

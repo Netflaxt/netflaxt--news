@@ -33,6 +33,7 @@ const Privacy = lazy(() => import("./pages/Privacy"));
 
 import ErrorBoundary from "./components/ErrorBoundary";
 import PushNudge from "./components/PushNudge";
+import ForegroundNotifier from "./components/ForegroundNotifier";
 import { refreshPushToken } from "./utils/push";
 import CookieBanner from "./components/CookieBanner";
 import InstallPrompt from "./components/InstallPrompt";
@@ -122,6 +123,10 @@ function App() {
 
       {/* 🔔 Invito discreto ad attivare le notifiche (solo se loggato) */}
       <PushNudge />
+
+      {/* 📨 Notifiche mostrate mentre il sito è aperto (il sistema, da solo,
+          le mostra solo quando l'app è chiusa o in secondo piano) */}
+      <ForegroundNotifier />
 
       {/* ✨ Fase 4 — Banner "Installa app" su mobile/desktop supportati */}
       <InstallPrompt />
