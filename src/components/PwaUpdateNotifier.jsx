@@ -215,7 +215,7 @@ export default function PwaUpdateNotifier() {
   if (!isStandalonePWA()) {
     if (dismissedRef.current) return null;
     return (
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[99] px-2 w-[94vw] max-w-md nf-pwa-toast-in">
+      <div data-no-twemoji className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[99] px-2 w-[94vw] max-w-md nf-pwa-toast-in">
         <div className="relative rounded-xl bg-bg-surface border border-accent/50 shadow-[0_16px_44px_-12px_rgba(0,0,0,0.6),0_0_34px_-10px_rgba(56,189,248,0.55)] overflow-hidden">
           <div className="h-1 bg-gradient-to-r from-accent via-accent-hover to-accent" />
           <div className="p-3.5 flex items-center gap-3">

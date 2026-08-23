@@ -141,6 +141,7 @@ export default function BadgeWatcher() {
 
   return (
     <div
+      data-no-twemoji
       className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[96] px-2 max-w-[92vw] sm:max-w-sm nf-badgew-in"
       role="status"
     >

@@ -92,7 +92,7 @@ export default function DidYouKnowBubble() {
   if (!open || !fact) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-40 max-w-sm nf-dyk-pop">
+    <div data-no-twemoji className="fixed bottom-4 right-4 z-40 max-w-sm nf-dyk-pop">
       <div className="relative rounded-2xl bg-bg-surface border border-accent/40 shadow-[0_10px_40px_-10px_rgba(56,189,248,0.5)] overflow-hidden">
         <div className="h-1 bg-gradient-to-r from-accent via-accent-hover to-accent" />
         <div className="p-5">

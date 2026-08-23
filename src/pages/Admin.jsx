@@ -343,6 +343,7 @@ export default function Admin() {
       {toast && (
         <div
           key={toast.id}
+          data-no-twemoji
           className="fixed bottom-6 right-6 z-[60] max-w-sm admin-toast"
           role="status"
           aria-live="polite"

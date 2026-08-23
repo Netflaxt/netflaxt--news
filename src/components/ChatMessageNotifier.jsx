@@ -156,7 +156,7 @@ export default function ChatMessageNotifier() {
   };
 
   return (
-    <div className="fixed top-20 right-4 z-[94] w-[88vw] max-w-xs nf-chatnotif-in">
+    <div data-no-twemoji className="fixed top-20 right-4 z-[94] w-[88vw] max-w-xs nf-chatnotif-in">
       <div className="relative rounded-2xl bg-bg-surface border border-accent/40 shadow-[0_18px_50px_-12px_rgba(0,0,0,0.6),0_0_36px_-12px_rgba(56,189,248,0.5)] overflow-hidden">
         <div className="h-1 bg-gradient-to-r from-accent via-accent-hover to-accent" />
         <div className="p-3">

@@ -69,7 +69,14 @@ export default function ForegroundNotifier() {
   };
 
   return (
-    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[110] px-2 w-[94vw] max-w-sm nf-pwa-toast-in">
+    /* data-no-twemoji: l'avviso compare e sparisce in pochi secondi e i
+       suoi testi contengono emoji. Se venissero convertite in immagini,
+       alla scomparsa React non ritroverebbe più il testo originale e la
+       pagina andrebbe in errore (vedi utils/twemoji.js). */
+    <div
+      data-no-twemoji
+      className="fixed top-4 left-1/2 -translate-x-1/2 z-[110] px-2 w-[94vw] max-w-sm nf-pwa-toast-in"
+    >
       <div className="rounded-xl bg-bg-surface border border-accent/50 shadow-[0_16px_44px_-12px_rgba(0,0,0,0.6),0_0_34px_-10px_rgba(56,189,248,0.45)] overflow-hidden">
         <button
           onClick={apri}

@@ -86,7 +86,7 @@ export default function PushNudge() {
   if (!visibile) return null;
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[95] px-2 w-[94vw] max-w-md nf-pwa-toast-in">
+    <div data-no-twemoji className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[95] px-2 w-[94vw] max-w-md nf-pwa-toast-in">
       <div className="rounded-xl bg-bg-surface border border-accent/40 shadow-[0_16px_44px_-12px_rgba(0,0,0,0.6)] overflow-hidden">
         <div className="p-4">
           <div className="flex items-start gap-3">
