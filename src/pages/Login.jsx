@@ -122,6 +122,11 @@ export default function Login() {
     isRegister && confirmPassword.length > 0 && password !== confirmPassword;
 
   const mapFirebaseError = (err) => {
+    // Senza questa riga un errore inatteso diventa un generico "Riprova"
+    // e non resta traccia di cosa sia andato storto: impossibile capirlo
+    // a distanza quando un tifoso segnala "non riesco ad accedere".
+    console.error("Accesso non riuscito:", err?.code, err?.message);
+
     if (err.code === "auth/invalid-credential" || err.code === "auth/wrong-password") {
       return "Email o password non corretti. Riprova o usa 'Password dimenticata?'.";
     }
@@ -131,6 +136,21 @@ export default function Login() {
     if (err.code === "auth/weak-password") return "Password troppo debole (minimo 6 caratteri).";
     if (err.code === "auth/too-many-requests") return "Troppi tentativi. Attendi qualche minuto.";
     if (err.code === "auth/popup-closed-by-user") return "Accesso Google annullato.";
+    if (err.code === "auth/cancelled-popup-request") return "Accesso Google annullato.";
+    if (err.code === "auth/popup-blocked") {
+      return "Il browser ha bloccato la finestra di Google. Consenti i popup per questo sito e riprova.";
+    }
+    if (err.code === "auth/unauthorized-domain") {
+      // Capita dopo un cambio di indirizzo del sito: l'indirizzo va
+      // autorizzato in Firebase (Authentication → Impostazioni → Domini).
+      return "Accesso Google non disponibile da questo indirizzo. Avvisa l'amministratore del sito.";
+    }
+    if (err.code === "auth/network-request-failed") {
+      return "Connessione assente o instabile. Controlla la rete e riprova.";
+    }
+    if (err.code === "auth/operation-not-allowed") {
+      return "L'accesso con Google non è attivo. Avvisa l'amministratore del sito.";
+    }
     return "Errore. Riprova.";
   };
 
