@@ -15,6 +15,7 @@ import AdminPollsTab from "./admin/AdminPollsTab";
 import AdminReportsTab from "./admin/AdminReportsTab";
 import AdminDashboardTab from "./admin/AdminDashboardTab";
 import AdminPushTab from "./admin/AdminPushTab";
+import AdminNewsletterTab from "./admin/AdminNewsletterTab";
 import { Navigate } from "react-router-dom";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
@@ -490,6 +491,7 @@ export default function Admin() {
               { key: "sondaggi",     label: "Sondaggi",          Icon: BarsIcon },
               { key: "segnalazioni", label: "Segnalazioni",      Icon: FlagIcon },
               { key: "push",         label: "Notifiche",         Icon: BellIcon },
+              { key: "newsletter",   label: "Newsletter",        Icon: MailIcon },
               { key: "moderazione",  label: "Moderazione",       Icon: ShieldIcon },
               { key: "utenti",       label: "Utenti",            Icon: UsersIcon },
               { key: "chat",         label: "Chat",              Icon: ChatIcon },
@@ -899,6 +901,7 @@ export default function Admin() {
 
         {/* ═══════════════════ TAB: PUSH NOTIFICATIONS ═══════════════════ */}
         {tab === "push" && <AdminPushTab onToast={showToast} />}
+        {tab === "newsletter" && <AdminNewsletterTab onToast={showToast} />}
 
         {/* ═══════════════════ TAB: MODERAZIONE ═══════════════════ */}
         {tab === "moderazione" && (

@@ -95,36 +95,30 @@ async function pulisciArchivio(auth, helpers) {
   const { runQuery, eliminaDoc } = helpers;
   if (!eliminaDoc) return 0;
 
-  const limite = new Date(Date.now() - GIORNI_ARCHIVIO * 24 * 60 * 60 * 1000);
-  const vecchie = await runQuery(auth, {
+  const limite = Date.now() - GIORNI_ARCHIVIO * 24 * 60 * 60 * 1000;
+
+  /* Una sola condizione nella ricerca (lo stato), la data la
+     controlliamo qui sotto. Combinare due condizioni obbligherebbe a
+     creare un indice apposta su Firestore: senza, l'intera lettura
+     fallisce e con essa TUTTE le notifiche (successo il 24/08/2026). */
+  const spedite = await runQuery(auth, {
     from: [{ collectionId: "pushQueue" }],
     where: {
-      compositeFilter: {
-        op: "AND",
-        filters: [
-          {
-            fieldFilter: {
-              field: { fieldPath: "status" },
-              op: "EQUAL",
-              value: { stringValue: "sent" },
-            },
-          },
-          {
-            fieldFilter: {
-              field: { fieldPath: "createdAt" },
-              op: "LESS_THAN",
-              value: { timestampValue: limite.toISOString() },
-            },
-          },
-        ],
+      fieldFilter: {
+        field: { fieldPath: "status" },
+        op: "EQUAL",
+        value: { stringValue: "sent" },
       },
     },
-    limit: 20, // poche per volta: il lavoro vero è aggiornare la partita
+    limit: 40,
   });
 
   let tolte = 0;
-  for (const m of vecchie) {
+  for (const m of spedite) {
+    const quando = helpers.fval(m.fields.createdAt);
+    if (!quando || quando >= limite) continue; // ancora recente: si tiene
     if (await eliminaDoc(auth, `pushQueue/${m.id}`)) tolte++;
+    if (tolte >= 20) break; // poche per volta: il lavoro vero è la partita
   }
   return tolte;
 }

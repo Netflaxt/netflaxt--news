@@ -124,6 +124,13 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // ─── NEWSLETTER: messaggi in partenza ──────────
+    // Solo l'admin scrive qui; il servizio automatico che li spedisce
+    // usa le credenziali di servizio e non passa da queste regole.
+    match /newsletterQueue/{id} {
+      allow read, write: if isAdmin();
+    }
+
     // ─── NEWSLETTER ────────────────────────────────
     // L'indirizzo email è anche l'id del documento: così l'iscrizione
     // doppia viene rifiutata da sola (sarebbe una modifica, non una

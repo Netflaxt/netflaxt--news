@@ -16,6 +16,7 @@
    ───────────────────────────────────────────────────────────── */
 
 import { processPushQueue, diagnosticaPush, inviaProva } from "./push.js";
+import { processNewsletter, disiscrivi } from "./newsletter.js";
 
 export default {
   async scheduled(event, env, ctx) {
@@ -31,6 +32,15 @@ export default {
   async fetch(req, env) {
     try {
       const q = new URL(req.url).searchParams;
+
+      /* Cancellazione dalla newsletter: DEVE restare accessibile senza
+         chiave, è il link in fondo alle email. Il codice personale
+         contenuto nel link fa da lasciapassare. */
+      if (q.get("disiscrivi")) {
+        const auth = await getAccessToken(env);
+        const esito = await disiscrivi(auth, { runQuery, eliminaDoc }, q.get("disiscrivi"));
+        return json(esito, esito.ok ? 200 : 404);
+      }
 
       const chiave = env.ADMIN_KEY;
       if (!chiave || q.get("key") !== chiave) {
@@ -117,6 +127,12 @@ async function eseguiTutto(env) {
     out.notifiche = await processPushQueue(env, auth, { runQuery, patchDoc, leggiDoc, eliminaDoc, fval });
   } catch (e) {
     out.notifiche = { errore: e.message };
+  }
+
+  try {
+    out.newsletter = await processNewsletter(env, auth, { runQuery, patchDoc, fval });
+  } catch (e) {
+    out.newsletter = { errore: e.message };
   }
 
   /* Lascia traccia dell'ultima esecuzione. Serve ad accorgersi se il
