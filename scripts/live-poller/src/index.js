@@ -58,20 +58,41 @@ async function poll(env) {
   const m = candidates.find((c) => fval(c.fields.status) !== "finished");
   if (!m) return { skipped: "nessuna partita nella finestra" };
 
+  // Già finalizzata (risultato + punti scritti): non sprecare chiamate API.
+  // Il piano free ha 100 richieste/giorno, quindi ogni chiamata conta.
+  if (fval(m.fields.scored) === true) return { skipped: "già finalizzata" };
+
   // 2) Dati live da API-Football. Usiamo ?live=all (accessibile sul piano
   //    GRATIS) e filtriamo la Lazio: ?season=2026 sul free è bloccato.
   const fx = await fetchLiveLazio(env);
   const curLive = fval(m.fields.live) === true;
   const curStatus = fval(m.fields.liveStatus);
 
-  // 3) In gioco (la partita compare tra le live): aggiorna minuto/recupero/risultato
+  // 3) In gioco (la partita compare tra le live): aggiorna minuto/recupero/
+  //    risultato E il tabellino (gol, marcatori, cartellini) in diretta.
   if (fx) {
     const short = fx.fixture?.status?.short || "2H";
     const elapsed = fx.fixture?.status?.elapsed ?? null;
     const extra = fx.fixture?.status?.extra ?? null;
     const home = fx.goals?.home ?? 0;
     const away = fx.goals?.away ?? 0;
-    await patchMatch(auth, m.id, {
+    const fixtureId = fx.fixture?.id ?? null;
+
+    // Gli eventi arrivano già dentro ?live=all. Se un giorno non ci fossero,
+    // ripieghiamo su /fixtures/events — ma NON a ogni giro: raddoppierebbe le
+    // chiamate e sforerebbe le 100/giorno del piano free a metà partita.
+    // Quindi solo quando cambia il punteggio (serve subito il marcatore) o
+    // ogni ~10 minuti di gioco per raccogliere i cartellini.
+    let raw = Array.isArray(fx.events) ? fx.events : null;
+    if (!raw && fixtureId) {
+      const golNuovo =
+        (fval(m.fields.liveHome) ?? -1) !== home || (fval(m.fields.liveAway) ?? -1) !== away;
+      const giroPeriodico = elapsed != null && elapsed % 10 === 0;
+      if (golNuovo || giroPeriodico) raw = await fetchEvents(env, fixtureId);
+    }
+    const events = mapEvents(raw, fx.teams?.home?.id);
+
+    const fields = {
       live: true,
       liveStatus: short,
       liveMinute: elapsed,
@@ -79,19 +100,84 @@ async function poll(env) {
       liveHome: home,
       liveAway: away,
       liveUpdatedAt: new Date(),
-    });
-    return { updated: m.id, short, elapsed, extra, score: `${home}-${away}` };
+      liveFixtureId: fixtureId,
+    };
+    // Scriviamo il tabellino solo se abbiamo davvero letto degli eventi,
+    // così un vuoto temporaneo dell'API non cancella quello già salvato.
+    if (events) fields.events = events;
+
+    // Se l'API dichiara la partita conclusa mentre è ancora in lista,
+    // finalizziamo subito con i dati definitivi.
+    if (FINISHED.includes(short)) {
+      return await finalize(auth, m.id, home, away, events, "api");
+    }
+
+    await patchMatch(auth, m.id, fields);
+    return { updated: m.id, short, elapsed, extra, score: `${home}-${away}`, eventi: events?.length ?? "invariati" };
   }
 
-  // La Lazio non è tra le partite live:
-  //  - se la NOSTRA era live → è appena finita: scrivi "FT" una volta sola
-  //    (poi diventa stale dopo 15 min, oppure l'admin finalizza il risultato);
-  //  - altrimenti non è ancora iniziata → niente.
+  // 4) La Lazio non è più tra le partite live. Se la NOSTRA era in corso, la
+  //    partita è appena finita: finalizziamo da soli con l'ultimo stato
+  //    conosciuto (punteggio + tabellino già salvati poll dopo poll).
   if (curLive && curStatus !== "FT") {
-    await patchMatch(auth, m.id, { liveStatus: "FT", liveUpdatedAt: new Date() });
-    return { finished: m.id };
+    const home = fval(m.fields.liveHome) ?? 0;
+    const away = fval(m.fields.liveAway) ?? 0;
+    const events = readEvents(m.fields.events);
+    return await finalize(auth, m.id, home, away, events, "uscita-dalle-live");
   }
   return { skipped: "non in corso", curLive };
+}
+
+/* ── Finalizzazione automatica ─────────────────────────────────
+   Scrive il risultato definitivo, chiude lo stato live e assegna i
+   punti ai pronostici (stessa logica di scoreMatch lato sito:
+   3 punti al risultato esatto, 1 all'esito 1X2). ─────────────── */
+async function finalize(auth, matchId, home, away, events, origine) {
+  const fields = {
+    homeScore: home,
+    awayScore: away,
+    status: "finished",
+    scored: true,
+    live: false,
+    liveStatus: "FT",
+    liveUpdatedAt: new Date(),
+    updatedAt: new Date(),
+  };
+  if (events) fields.events = events;
+  await patchMatch(auth, matchId, fields);
+
+  const punti = await scorePredictions(auth, matchId, home, away);
+  return { finalizzata: matchId, risultato: `${home}-${away}`, eventi: events?.length ?? 0, pronosticiValutati: punti, origine };
+}
+
+/* Esito 1X2 dal punteggio */
+function outcomeOf(h, a) {
+  if (h > a) return "1";
+  if (h < a) return "2";
+  return "X";
+}
+
+/* Assegna i punti a tutti i pronostici della partita */
+async function scorePredictions(auth, matchId, home, away) {
+  const finalOutcome = outcomeOf(home, away);
+  const preds = await runQuery(auth, {
+    from: [{ collectionId: "predictions" }],
+    where: {
+      fieldFilter: { field: { fieldPath: "matchId" }, op: "EQUAL", value: { stringValue: matchId } },
+    },
+  });
+  let n = 0;
+  for (const p of preds) {
+    const ph = fval(p.fields.homeScore);
+    const pa = fval(p.fields.awayScore);
+    const esatto = Number(ph) === Number(home) && Number(pa) === Number(away);
+    let points = 0;
+    if (esatto) points = 3;
+    else if (fval(p.fields.outcome) === finalOutcome) points = 1;
+    await patchDoc(auth, `predictions/${p.id}`, { points });
+    n++;
+  }
+  return n;
 }
 
 /* ── API-Football: partite LIVE (?live=all). A differenza di ?season=…
@@ -111,6 +197,73 @@ async function fetchLiveLazio(env) {
         String(fx.teams?.away?.id) === teamId
     ) || null
   );
+}
+
+/* ── Eventi della partita (fallback: usato solo se ?live=all non li
+   include già nella risposta). ─────────────────────────────────── */
+async function fetchEvents(env, fixtureId) {
+  const res = await fetch(
+    `https://v3.football.api-sports.io/fixtures/events?fixture=${fixtureId}`,
+    { headers: { "x-apisports-key": env.APIFOOTBALL_KEY } }
+  );
+  if (!res.ok) return null;
+  const data = await res.json();
+  return Array.isArray(data.response) ? data.response : null;
+}
+
+/* ── Mappa gli eventi API-Football sul formato del tabellino del sito:
+   { team: "home"|"away", type, player, minute }
+   Tipi gestiti: gol (normale/rigore/autogol), giallo, rosso.
+   NB: l'API non segnala gli infortuni come evento dedicato, quindi
+   l'icona ambulanza resta un inserimento manuale dell'admin. ───── */
+function mapEvents(raw, homeTeamId) {
+  if (!Array.isArray(raw)) return null;
+  const out = [];
+  for (const e of raw) {
+    const tipo = String(e?.type || "").toLowerCase();
+    const dett = String(e?.detail || "").toLowerCase();
+
+    let type = null;
+    if (tipo === "goal") {
+      if (dett.includes("missed")) continue;      // rigore sbagliato: non è gol
+      if (dett.includes("own")) type = "owngoal";
+      else if (dett.includes("penalty")) type = "penalty";
+      else type = "goal";
+    } else if (tipo === "card") {
+      if (dett.includes("yellow") && !dett.includes("second")) type = "yellow";
+      else type = "red";                           // rosso diretto o doppio giallo
+    } else {
+      continue;                                    // sostituzioni, VAR: non in tabellino
+    }
+
+    const elapsed = Number(e?.time?.elapsed ?? 0);
+    const extra = Number(e?.time?.extra ?? 0) || 0;
+    const minute = Math.max(0, Math.min(130, elapsed + extra));
+
+    out.push({
+      team: String(e?.team?.id) === String(homeTeamId) ? "home" : "away",
+      type,
+      player: String(e?.player?.name || "").trim().slice(0, 60),
+      minute,
+    });
+  }
+  out.sort((a, b) => a.minute - b.minute);
+  return out;
+}
+
+/* Rilegge il tabellino già salvato su Firestore (formato typed values) */
+function readEvents(field) {
+  const vals = field?.arrayValue?.values;
+  if (!Array.isArray(vals)) return null;
+  return vals.map((v) => {
+    const f = v.mapValue?.fields || {};
+    return {
+      team: fval(f.team) || "home",
+      type: fval(f.type) || "goal",
+      player: fval(f.player) || "",
+      minute: Number(fval(f.minute) ?? 0),
+    };
+  });
 }
 
 /* ── Firestore REST (auth service account) ────────────────────── */
@@ -153,11 +306,16 @@ async function runQuery(auth, structuredQuery) {
     .map((r) => ({ id: r.document.name.split("/").pop(), fields: r.document.fields || {} }));
 }
 
-async function patchMatch(auth, id, fields) {
+function patchMatch(auth, id, fields) {
+  return patchDoc(auth, `matches/${id}`, fields);
+}
+
+/* Aggiorna un documento qualsiasi (matches, predictions, …) */
+async function patchDoc(auth, path, fields) {
   const mask = Object.keys(fields)
     .map((k) => `updateMask.fieldPaths=${encodeURIComponent(k)}`)
     .join("&");
-  const url = `https://firestore.googleapis.com/v1/projects/${auth.projectId}/databases/(default)/documents/matches/${id}?${mask}`;
+  const url = `https://firestore.googleapis.com/v1/projects/${auth.projectId}/databases/(default)/documents/${path}?${mask}`;
   const res = await fetch(url, {
     method: "PATCH",
     headers: { authorization: `Bearer ${auth.token}`, "content-type": "application/json" },
@@ -178,15 +336,21 @@ function fval(f) {
 }
 function toFields(obj) {
   const out = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (v === null || v === undefined) out[k] = { nullValue: null };
-    else if (typeof v === "boolean") out[k] = { booleanValue: v };
-    else if (typeof v === "number")
-      out[k] = Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
-    else if (v instanceof Date) out[k] = { timestampValue: v.toISOString() };
-    else out[k] = { stringValue: String(v) };
-  }
+  for (const [k, v] of Object.entries(obj)) out[k] = toValue(v);
   return out;
+}
+
+/* Converte un valore JS nel formato "typed value" di Firestore.
+   Gestisce anche array e oggetti annidati (serve per il tabellino). */
+function toValue(v) {
+  if (v === null || v === undefined) return { nullValue: null };
+  if (typeof v === "boolean") return { booleanValue: v };
+  if (typeof v === "number")
+    return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+  if (v instanceof Date) return { timestampValue: v.toISOString() };
+  if (Array.isArray(v)) return { arrayValue: { values: v.map(toValue) } };
+  if (typeof v === "object") return { mapValue: { fields: toFields(v) } };
+  return { stringValue: String(v) };
 }
 
 /* ── JWT RS256 via Web Crypto ─────────────────────────────────── */

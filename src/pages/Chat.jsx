@@ -345,6 +345,56 @@ export default function Chat() {
     return () => clearTimeout(t);
   }, [highlightedId]);
 
+  /* ─── Presence filtrata ─── */
+  /* NB: questi useMemo stanno PRIMA dell'auth gate di proposito. Al logout
+     `user` diventa null e il componente si ri-renderizza un'ultima volta
+     prima del redirect: se gli hook stessero dopo il gate, React ne
+     troverebbe di meno e romperebbe il render (schermata bianca). */
+  const livePresence = useMemo(() => {
+    const serverNow = Date.now() + serverOffset;
+    return presence.filter((p) => {
+      const ls = typeof p.lastSeen === "number" ? p.lastSeen : 0;
+      if (ls === 0) return true;
+      return serverNow - ls < STALE_THRESHOLD_MS;
+    });
+  }, [presence, serverOffset]);
+
+  const presenceMap = useMemo(() => {
+    const m = {};
+    livePresence.forEach((p) => {
+      m[p.uid] = p;
+    });
+    return m;
+  }, [livePresence]);
+
+  /* ─── Raggruppa messaggi per giorno ─── */
+  const groups = useMemo(() => {
+    const out = [];
+    let currentKey = null;
+    messages.forEach((m) => {
+      const d = new Date(m.timestamp || Date.now());
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
+
+      let key;
+      if (d.toDateString() === today.toDateString()) key = "Oggi";
+      else if (d.toDateString() === yesterday.toDateString()) key = "Ieri";
+      else
+        key = d.toLocaleDateString("it-IT", {
+          day: "2-digit",
+          month: "long",
+        });
+
+      if (key !== currentKey) {
+        out.push({ day: key, items: [] });
+        currentKey = key;
+      }
+      out[out.length - 1].items.push(m);
+    });
+    return out;
+  }, [messages]);
+
   /* ─── Auth gate ─── */
   if (authLoading) return null;
   if (!user) return <Navigate to="/login" />;
@@ -513,53 +563,6 @@ export default function Chat() {
   const handleClosePoll = (msgId) => {
     closePoll(msgId);
   };
-
-  /* ─── Presence filtrata ─── */
-  const livePresence = useMemo(() => {
-    const serverNow = Date.now() + serverOffset;
-    return presence.filter((p) => {
-      const ls = typeof p.lastSeen === "number" ? p.lastSeen : 0;
-      if (ls === 0) return true;
-      return serverNow - ls < STALE_THRESHOLD_MS;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presence, serverOffset]);
-
-  const presenceMap = useMemo(() => {
-    const m = {};
-    livePresence.forEach((p) => {
-      m[p.uid] = p;
-    });
-    return m;
-  }, [livePresence]);
-
-  /* ─── Raggruppa messaggi per giorno ─── */
-  const groups = useMemo(() => {
-    const out = [];
-    let currentKey = null;
-    messages.forEach((m) => {
-      const d = new Date(m.timestamp || Date.now());
-      const today = new Date();
-      const yesterday = new Date(today);
-      yesterday.setDate(today.getDate() - 1);
-
-      let key;
-      if (d.toDateString() === today.toDateString()) key = "Oggi";
-      else if (d.toDateString() === yesterday.toDateString()) key = "Ieri";
-      else
-        key = d.toLocaleDateString("it-IT", {
-          day: "2-digit",
-          month: "long",
-        });
-
-      if (key !== currentKey) {
-        out.push({ day: key, items: [] });
-        currentKey = key;
-      }
-      out[out.length - 1].items.push(m);
-    });
-    return out;
-  }, [messages]);
 
   const adminsOnline = livePresence.filter((p) => p.isAdmin);
   const fansOnline = livePresence.filter((p) => !p.isAdmin);

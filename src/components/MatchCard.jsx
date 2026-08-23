@@ -305,8 +305,9 @@ export default function MatchCard({ match, children }) {
         )}
       </div>
 
-      {/* Tabellino (partite finite con eventi) */}
-      {finished && Array.isArray(match.events) && match.events.length > 0 && (
+      {/* Tabellino: a fine partita e anche DURANTE il live, così gol e
+          cartellini compaiono man mano che succedono. */}
+      {(finished || isLiveNow) && Array.isArray(match.events) && match.events.length > 0 && (
         <div className="px-4 pb-4">
           <MatchEvents events={match.events} />
         </div>

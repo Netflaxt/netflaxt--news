@@ -167,7 +167,7 @@ export default function QuizCard() {
               Le tue risposte
             </div>
             {todayResult.answers.map((a, i) => {
-              const q = qMap.get(a.questionId) || todayQs[i];
+              const q = qMap.get(a.questionId);
               if (!q) return null;
               const right = !!a.correct;
               return (

@@ -1,9 +1,28 @@
 # 🔴 Live poller — minuto in diretta delle partite Lazio
 
 Questo "programmino" gira su **Cloudflare** ogni 2 minuti. Quando c'è una
-partita della Lazio **in corso**, legge da **API-Football** (minuto, recupero,
-stato, risultato) e lo scrive su Firestore. Il sito mostra il ticker live in
-tempo reale (Live lampeggiante, 12'→13', 45+5', "Fine 1° tempo", "Fine partita").
+partita della Lazio **in corso**, legge da **API-Football** e scrive su
+Firestore. Il sito mostra tutto in tempo reale, senza che tu faccia niente.
+
+**Cosa aggiorna da solo, durante la partita:**
+- ⏱️ minuto (12'→13'), recupero (45+3', 90+5'), "Fine 1° tempo", "Fine partita"
+- ⚽ **risultato**, aggiornato subito dopo ogni gol
+- 📋 **tabellino live**: gol, rigori, autogol, ammonizioni, espulsioni,
+  con **nome del marcatore e minuto**
+- 🏁 a fine partita: **risultato finale** salvato da solo (`status: finished`)
+  e **punti dei pronostici assegnati** automaticamente (3 = risultato esatto,
+  1 = esito 1X2)
+
+**Cosa NON è automatico:**
+- 🚑 gli **infortuni**: API-Football non li espone come evento, quindi l'icona
+  ambulanza resta un inserimento manuale dal pannello admin.
+- I nomi arrivano nel formato dell'API (es. `M. Zaccagni`): se vuoi il nome
+  completo, correggilo dal pannello admin — il tabellino è modificabile.
+
+> ⚙️ **Consumo API**: 1 sola chiamata per ciclo (gli eventi arrivano già
+> dentro `?live=all`), e nessuna chiamata quando non ci sono partite o quando
+> la gara è già stata finalizzata. Circa **75 chiamate a partita**, dentro il
+> limite di 100/giorno del piano gratuito.
 
 > Setup **una volta sola**, ~15 minuti. Poi è tutto automatico e **gratis**.
 > Il sito è già pronto a mostrare i dati: questo Worker li fornisce.

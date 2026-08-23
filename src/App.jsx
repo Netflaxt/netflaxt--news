@@ -31,6 +31,7 @@ const Pronostici = lazy(() => import("./pages/Pronostici"));
 const Classifica = lazy(() => import("./pages/Classifica"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 
+import ErrorBoundary from "./components/ErrorBoundary";
 import CookieBanner from "./components/CookieBanner";
 import InstallPrompt from "./components/InstallPrompt";
 import SiteStatusModal from "./components/SiteStatusModal";
@@ -78,6 +79,7 @@ function App() {
       <RouteEffects />
       <Navbar />
       <div key={location.pathname} className="flex-1 nf-page-enter">
+        <ErrorBoundary resetKey={location.pathname}>
         <Suspense fallback={<RouteLoader />}>
           <Routes>
             <Route path="/" element={<Home />} />
@@ -98,6 +100,7 @@ function App() {
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
+        </ErrorBoundary>
       </div>
       <Footer />
 

@@ -108,6 +108,55 @@ export default function Admin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /* NB: gli hook qui sotto stanno PRIMA dell'auth gate di proposito. Al
+     logout `user` diventa null e il componente si ri-renderizza un'ultima
+     volta prima del redirect: se stessero dopo il gate, React ne troverebbe
+     di meno e romperebbe il render (schermata bianca). */
+  const getCroppedBlob = useCallback(() => {
+    return new Promise((resolve) => {
+      if (!completedCrop || !imgRef.current) {
+        resolve(null);
+        return;
+      }
+      const image = imgRef.current;
+      const canvas = document.createElement("canvas");
+      const scaleX = image.naturalWidth / image.width;
+      const scaleY = image.naturalHeight / image.height;
+      canvas.width = completedCrop.width * scaleX;
+      canvas.height = completedCrop.height * scaleY;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(
+        image,
+        completedCrop.x * scaleX, completedCrop.y * scaleY,
+        completedCrop.width * scaleX, completedCrop.height * scaleY,
+        0, 0, canvas.width, canvas.height
+      );
+      canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.92);
+    });
+  }, [completedCrop]);
+
+  // ─────────────── STATISTICHE ───────────────
+  const stats = useMemo(() => {
+    const now = new Date();
+    const thisMonth = articles.filter((a) => {
+      const d = a.date?.toDate?.();
+      return d && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }).length;
+    const featuredCount = articles.filter((a) => a.featured).length;
+    return { total: articles.length, thisMonth, featured: featuredCount };
+  }, [articles]);
+
+  // ─────────────── LISTA FILTRATA ───────────────
+  const filteredArticles = useMemo(() => {
+    const s = searchTerm.trim().toLowerCase();
+    if (!s) return articles;
+    return articles.filter(
+      (a) =>
+        (a.title || "").toLowerCase().includes(s) ||
+        (a.category || "").toLowerCase().includes(s)
+    );
+  }, [articles, searchTerm]);
+
   if (authLoading) return null;
   if (!user) return <Navigate to="/login" />;
   if (user.email !== ADMIN_EMAIL) return <Navigate to="/" />;
@@ -184,28 +233,6 @@ export default function Admin() {
     setCrop(centerAspectCrop(width, height, 16 / 9));
   };
 
-  const getCroppedBlob = useCallback(() => {
-    return new Promise((resolve) => {
-      if (!completedCrop || !imgRef.current) {
-        resolve(null);
-        return;
-      }
-      const image = imgRef.current;
-      const canvas = document.createElement("canvas");
-      const scaleX = image.naturalWidth / image.width;
-      const scaleY = image.naturalHeight / image.height;
-      canvas.width = completedCrop.width * scaleX;
-      canvas.height = completedCrop.height * scaleY;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(
-        image,
-        completedCrop.x * scaleX, completedCrop.y * scaleY,
-        completedCrop.width * scaleX, completedCrop.height * scaleY,
-        0, 0, canvas.width, canvas.height
-      );
-      canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.92);
-    });
-  }, [completedCrop]);
 
   const handleCropConfirm = async () => {
     setShowCrop(false);
@@ -274,28 +301,6 @@ export default function Admin() {
       setLoading(false);
     }
   };
-
-  // ─────────────── STATISTICHE ───────────────
-  const stats = useMemo(() => {
-    const now = new Date();
-    const thisMonth = articles.filter((a) => {
-      const d = a.date?.toDate?.();
-      return d && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    }).length;
-    const featuredCount = articles.filter((a) => a.featured).length;
-    return { total: articles.length, thisMonth, featured: featuredCount };
-  }, [articles]);
-
-  // ─────────────── LISTA FILTRATA ───────────────
-  const filteredArticles = useMemo(() => {
-    const s = searchTerm.trim().toLowerCase();
-    if (!s) return articles;
-    return articles.filter(
-      (a) =>
-        (a.title || "").toLowerCase().includes(s) ||
-        (a.category || "").toLowerCase().includes(s)
-    );
-  }, [articles, searchTerm]);
 
   // Quill toolbar config
   const quillModules = {
