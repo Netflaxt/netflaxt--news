@@ -15,28 +15,51 @@
      TEAM_ID                   (var, default 487 = SS Lazio)
    ───────────────────────────────────────────────────────────── */
 
+import { processPushQueue } from "./push.js";
+
 export default {
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(poll(env).catch((e) => console.error("poll error:", e.message)));
+    ctx.waitUntil(eseguiTutto(env).catch((e) => console.error("errore:", e.message)));
   },
   // Endpoint manuale per testare: apri l'URL del Worker nel browser
   async fetch(req, env) {
     try {
-      const r = await poll(env);
-      return json(r);
+      return json(await eseguiTutto(env));
     } catch (e) {
       return json({ error: e.message }, 500);
     }
   },
 };
 
+/* Un solo accesso a Firestore per entrambi i compiti del Worker:
+   1) aggiornare la partita in diretta  2) spedire le notifiche in coda.
+   Se uno dei due fallisce, l'altro prosegue comunque. */
+async function eseguiTutto(env) {
+  const auth = await getAccessToken(env);
+  const out = {};
+
+  try {
+    out.live = await poll(env, auth);
+  } catch (e) {
+    out.live = { errore: e.message };
+  }
+
+  try {
+    out.notifiche = await processPushQueue(env, auth, { runQuery, patchDoc, fval });
+  } catch (e) {
+    out.notifiche = { errore: e.message };
+  }
+
+  return out;
+}
+
 const WINDOW_BEFORE_MS = 10 * 60 * 1000;  // 10 min prima del kickoff
 const WINDOW_AFTER_MS = 150 * 60 * 1000;  // 150 min dopo (copre recuperi/ET)
 const IN_PLAY = ["1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"];
 const FINISHED = ["FT", "AET", "PEN"];
 
-async function poll(env) {
-  const auth = await getAccessToken(env);
+async function poll(env, authCondiviso) {
+  const auth = authCondiviso || (await getAccessToken(env));
 
   // 1) C'è una partita Lazio nella finestra oraria? (lettura Firestore gratis)
   const now = Date.now();
@@ -273,7 +296,9 @@ async function getAccessToken(env) {
   const now = Math.floor(Date.now() / 1000);
   const claim = {
     iss: sa.client_email,
-    scope: "https://www.googleapis.com/auth/datastore",
+    // datastore = leggere/scrivere Firestore · firebase.messaging = inviare le push
+    scope:
+      "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase.messaging",
     aud: "https://oauth2.googleapis.com/token",
     iat: now,
     exp: now + 3600,

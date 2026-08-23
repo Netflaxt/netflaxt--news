@@ -160,12 +160,12 @@ export default function AdminPushTab({ onToast }) {
             </select>
           </label>
 
-          <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs leading-relaxed">
-            <strong className="font-bold">Nota:</strong> l'invio effettivo
-            richiede un endpoint serverless con la chiave service-account
-            Firebase. Verrà configurato quando il dominio sarà attivo. Per ora
-            la notifica viene messa in coda in <code>pushQueue/</code> e
-            partirà non appena il backend sarà online.
+          <div className="p-3 rounded-lg bg-success/10 border border-success/30 text-success text-xs leading-relaxed">
+            <strong className="font-bold">Invio attivo:</strong> la notifica
+            viene messa in coda e spedita automaticamente <strong>entro 2
+            minuti</strong>. Qui sotto vedi lo stato di ogni invio:{" "}
+            <code>queued</code> = in partenza, <code>sent</code> = inviata (col
+            numero di dispositivi raggiunti).
           </div>
 
           <button
