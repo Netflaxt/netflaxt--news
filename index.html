@@ -44,6 +44,40 @@
     <meta name="robots" content="index, follow, max-image-preview:large" />
     <link rel="canonical" href="https://netflaxt.it/" />
 
+    <!-- Carta d'identità del sito per i motori di ricerca: dice che
+         Netflaxt News è una testata di notizie sportive in italiano,
+         chi la pubblica e dove trovarla sui social. Serve a farsi
+         riconoscere come fonte e non come pagina qualsiasi. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "NewsMediaOrganization",
+            "@id": "https://netflaxt.it/#organizzazione",
+            "name": "Netflaxt News",
+            "url": "https://netflaxt.it/",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://netflaxt.it/icon-512.png",
+              "width": 512,
+              "height": 512
+            },
+            "description": "Fan site indipendente sulla S.S. Lazio: notizie, calciomercato, calendario, pronostici e chat live per i tifosi biancocelesti.",
+            "sameAs": ["https://www.instagram.com/netflaxt/"]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://netflaxt.it/#sito",
+            "url": "https://netflaxt.it/",
+            "name": "Netflaxt News",
+            "inLanguage": "it-IT",
+            "publisher": { "@id": "https://netflaxt.it/#organizzazione" }
+          }
+        ]
+      }
+    </script>
+
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Netflaxt News" />
