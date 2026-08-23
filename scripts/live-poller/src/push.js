@@ -75,22 +75,43 @@ export async function diagnosticaPush(auth, helpers) {
 export async function processPushQueue(env, auth, helpers) {
   const { runQuery, patchDoc, fval } = helpers;
 
-  const inCoda = await runQuery(auth, {
-    from: [{ collectionId: "pushQueue" }],
-    where: {
-      fieldFilter: {
-        field: { fieldPath: "status" },
-        op: "EQUAL",
-        value: { stringValue: "queued" },
+  const perStato = (stato) =>
+    runQuery(auth, {
+      from: [{ collectionId: "pushQueue" }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: "status" },
+          op: "EQUAL",
+          value: { stringValue: stato },
+        },
       },
-    },
-    limit: MAX_MESSAGGI_PER_GIRO,
+      limit: MAX_MESSAGGI_PER_GIRO,
+    });
+
+  // Messaggi da spedire + eventuali rimasti appesi in "sending" (se il
+  // Worker si è interrotto a metà invio), recuperati dopo 15 minuti.
+  const nuovi = await perStato("queued");
+  const appesi = (await perStato("sending")).filter((m) => {
+    const da = fval(m.fields.sendingAt);
+    return !da || Date.now() - da > 15 * 60 * 1000;
   });
+  const inCoda = [...nuovi, ...appesi].slice(0, MAX_MESSAGGI_PER_GIRO);
 
   if (!inCoda.length) return { push: "coda vuota" };
 
   const esiti = [];
   for (const msg of inCoda) {
+    // Prendiamo in carico il messaggio PRIMA di spedirlo: se per qualsiasi
+    // motivo il Worker parte due volte ravvicinate, la seconda esecuzione
+    // non lo trova più fra i "queued" e non lo rispedisce.
+    try {
+      await patchDoc(auth, `pushQueue/${msg.id}`, {
+        status: "sending",
+        sendingAt: new Date(),
+      });
+    } catch {
+      continue; // preso in carico da un'altra esecuzione: lo saltiamo
+    }
     esiti.push(await inviaMessaggio(env, auth, helpers, msg, { patchDoc, fval }));
   }
   return { push: esiti };
@@ -134,7 +155,9 @@ async function inviaMessaggio(env, auth, helpers, msg, { patchDoc, fval }) {
   let ok = 0;
   let ko = 0;
   for (const token of blocco) {
-    const esito = await inviaFcm(auth, token, { titolo, testo, url });
+    // Stesso tag per tutti i dispositivi dello stesso messaggio, diverso
+    // fra un messaggio e l'altro (usiamo l'id del documento in coda).
+    const esito = await inviaFcm(auth, token, { titolo, testo, url, tag: msg.id });
     if (esito) ok++;
     else ko++;
   }
@@ -187,22 +210,27 @@ async function raccogliToken(auth, runQuery, fval, audience) {
   return [...token];
 }
 
-/* Invio singolo tramite FCM HTTP v1. Ritorna true se accettato. */
-async function inviaFcm(auth, token, { titolo, testo, url }) {
+/* Invio singolo tramite FCM HTTP v1. Ritorna true se accettato.
+
+   IMPORTANTE — perché mandiamo SOLO `data` e nessun campo `notification`:
+   se il messaggio contiene `notification`, il browser mostra la notifica
+   da solo; ma il nostro service worker ne mostra un'altra con
+   showNotification() → l'utente ne vedrebbe DUE identiche.
+   Mandando solo i dati, il service worker resta l'unico a mostrarla. */
+async function inviaFcm(auth, token, { titolo, testo, url, tag }) {
   const endpoint = `https://fcm.googleapis.com/v1/projects/${auth.projectId}/messages:send`;
   const body = {
     message: {
       token,
-      notification: { title: titolo, body: testo },
-      webpush: {
-        notification: {
-          title: titolo,
-          body: testo,
-          icon: "/icon-192.png",
-          badge: "/favicon-32.png",
-        },
-        fcm_options: { link: assolutizza(url) },
+      data: {
+        title: titolo,
+        body: testo,
+        url: assolutizza(url),
+        // tag diverso per ogni messaggio: così due notifiche successive
+        // restano entrambe visibili invece di sostituirsi a vicenda
+        tag: tag || `netflaxt-${Date.now()}`,
       },
+      webpush: { headers: { Urgency: "high" } },
     },
   };
 
