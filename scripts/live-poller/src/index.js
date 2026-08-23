@@ -40,6 +40,33 @@ export default {
         const auth = await getAccessToken(env);
         return json(await diagnosticaPush(auth, { runQuery, fval }));
       }
+
+      /* Stato della coda e ultimo giro del servizio: serve a capire se i
+         messaggi restano fermi (cron bloccato) o se partono e basta. */
+      if (q.get("diag") === "coda") {
+        const auth = await getAccessToken(env);
+        const messaggi = await runQuery(auth, {
+          from: [{ collectionId: "pushQueue" }],
+          orderBy: [{ field: { fieldPath: "createdAt" }, direction: "DESCENDING" }],
+          limit: 15,
+        });
+        const battito = await leggiDoc(auth, "sistema/livePoller");
+        const ultima = battito?.fields?.ultimaEsecuzione?.timestampValue;
+        return json({
+          ultimoGiroDelServizio: ultima || "mai",
+          minutiDallUltimoGiro: ultima
+            ? Math.round((Date.now() - new Date(ultima).getTime()) / 60000)
+            : null,
+          messaggi: messaggi.map((m) => ({
+            titolo: fval(m.fields.title),
+            stato: fval(m.fields.status),
+            inviate: fval(m.fields.sentCount),
+            fallite: fval(m.fields.failedCount),
+            errore: fval(m.fields.error),
+            creato: (m.fields.createdAt?.timestampValue || "").slice(0, 16).replace("T", " "),
+          })),
+        });
+      }
       // Invio di prova con esito dettagliato: ?prova=push
       if (q.get("prova") === "push") {
         const auth = await getAccessToken(env);
@@ -61,6 +88,7 @@ export default {
           runQuery,
           patchDoc,
           leggiDoc,
+          eliminaDoc,
           fval,
         });
         return json({ accodata, spedizione });
@@ -86,7 +114,7 @@ async function eseguiTutto(env) {
   }
 
   try {
-    out.notifiche = await processPushQueue(env, auth, { runQuery, patchDoc, leggiDoc, fval });
+    out.notifiche = await processPushQueue(env, auth, { runQuery, patchDoc, leggiDoc, eliminaDoc, fval });
   } catch (e) {
     out.notifiche = { errore: e.message };
   }
@@ -462,6 +490,16 @@ async function runQuery(auth, structuredQuery) {
 
 function patchMatch(auth, id, fields) {
   return patchDoc(auth, `matches/${id}`, fields);
+}
+
+/* Elimina un documento (serve a svuotare la coda delle notifiche già spedite) */
+async function eliminaDoc(auth, path) {
+  const url = `https://firestore.googleapis.com/v1/projects/${auth.projectId}/databases/(default)/documents/${path}`;
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: { authorization: `Bearer ${auth.token}` },
+  });
+  return res.ok;
 }
 
 /* Legge un singolo documento (serve per ripulire i dispositivi non più validi) */

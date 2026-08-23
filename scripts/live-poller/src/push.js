@@ -81,6 +81,54 @@ export async function diagnosticaPush(auth, helpers) {
   };
 }
 
+/* Quanto tenere in archivio le notifiche già spedite. Servono a vedere lo
+   storico nel pannello, ma oltre un certo punto sono solo peso inutile. */
+const GIORNI_ARCHIVIO = 14;
+
+/**
+ * Svuota la coda dalle notifiche vecchie già spedite.
+ * Senza, la collection cresce all'infinito: ogni gol, ogni notizia e ogni
+ * partita lasciano un documento, e nel giro di una stagione diventano
+ * migliaia — con letture più lente e spazio sprecato.
+ */
+async function pulisciArchivio(auth, helpers) {
+  const { runQuery, eliminaDoc } = helpers;
+  if (!eliminaDoc) return 0;
+
+  const limite = new Date(Date.now() - GIORNI_ARCHIVIO * 24 * 60 * 60 * 1000);
+  const vecchie = await runQuery(auth, {
+    from: [{ collectionId: "pushQueue" }],
+    where: {
+      compositeFilter: {
+        op: "AND",
+        filters: [
+          {
+            fieldFilter: {
+              field: { fieldPath: "status" },
+              op: "EQUAL",
+              value: { stringValue: "sent" },
+            },
+          },
+          {
+            fieldFilter: {
+              field: { fieldPath: "createdAt" },
+              op: "LESS_THAN",
+              value: { timestampValue: limite.toISOString() },
+            },
+          },
+        ],
+      },
+    },
+    limit: 20, // poche per volta: il lavoro vero è aggiornare la partita
+  });
+
+  let tolte = 0;
+  for (const m of vecchie) {
+    if (await eliminaDoc(auth, `pushQueue/${m.id}`)) tolte++;
+  }
+  return tolte;
+}
+
 export async function processPushQueue(env, auth, helpers) {
   const { runQuery, patchDoc, fval } = helpers;
 
@@ -106,7 +154,11 @@ export async function processPushQueue(env, auth, helpers) {
   });
   const inCoda = [...nuovi, ...appesi].slice(0, MAX_MESSAGGI_PER_GIRO);
 
-  if (!inCoda.length) return { push: "coda vuota" };
+  if (!inCoda.length) {
+    // Nessuna notifica da spedire: è il momento buono per fare pulizia
+    const tolte = await pulisciArchivio(auth, helpers);
+    return tolte ? { push: "coda vuota", archiviateRimosse: tolte } : { push: "coda vuota" };
+  }
 
   const esiti = [];
   for (const msg of inCoda) {

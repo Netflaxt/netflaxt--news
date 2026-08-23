@@ -24,6 +24,13 @@ export default class ErrorBoundary extends React.Component {
     // In produzione resta nei log del browser: utile se un tifoso
     // segnala "mi si è bloccato" e serve capire cosa è successo.
     console.error("Errore non gestito nella pagina:", error, info?.componentStack);
+    // Prima riga dello stack dei componenti: dice QUALE componente ha
+    // fallito, l'informazione più utile per capire il problema.
+    const dove = (info?.componentStack || "")
+      .split("\n")
+      .map((r) => r.trim())
+      .filter(Boolean)[0];
+    this.setState({ dettaglio: error?.message || String(error), dove });
   }
 
   // Cambiando route si riprova: azzera l'errore quando cambia la key
@@ -67,6 +74,20 @@ export default class ErrorBoundary extends React.Component {
               Torna alla home
             </a>
           </div>
+
+          {this.state.dettaglio && (
+            <details className="mt-6 text-left">
+              <summary className="cursor-pointer text-[11px] uppercase tracking-wider text-text-muted hover:text-text-secondary">
+                Dettagli tecnici
+              </summary>
+              <div className="mt-2 p-3 rounded-lg bg-bg-elevated border border-border text-[11px] text-text-secondary break-words font-mono">
+                {this.state.dove && (
+                  <div className="text-text-muted mb-1">in {this.state.dove}</div>
+                )}
+                {this.state.dettaglio}
+              </div>
+            </details>
+          )}
 
           <p className="mt-6 text-[11px] text-text-muted">
             Se ricapita, scrivimi e lo sistemo.
