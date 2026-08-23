@@ -34,6 +34,26 @@ Firestore. Il sito mostra tutto in tempo reale, senza che tu faccia niente.
 2. Nel dashboard, copia la tua **API Key** (sezione "API KEY" / "Account").
    Piano gratuito: 100 richieste/giorno (a noi bastano: ~75 per partita).
 
+## 🔐 Chiave di servizio (ADMIN_KEY)
+
+L'indirizzo del Worker risponde anche via browser, per diagnostica e prove
+manuali. Quelle funzioni sono **protette da una chiave**: senza, chiunque
+indovinasse l'indirizzo potrebbe mandare notifiche a tutti gli iscritti o
+consumare la quota giornaliera di API-Football.
+
+Imposta la chiave una volta sola (scegli una stringa lunga e casuale):
+```
+npx wrangler secret put ADMIN_KEY --cwd scripts/live-poller
+```
+
+Poi si usa così (sostituisci `LA_TUA_CHIAVE`):
+- Stato dispositivi: `…workers.dev/?diag=push&key=LA_TUA_CHIAVE`
+- Notifica di prova: `…workers.dev/?prova=push&key=LA_TUA_CHIAVE`
+
+> La chiave **non va mai messa nel codice**: il repository è pubblico.
+> Vive solo come secret su Cloudflare.
+> Il funzionamento automatico (ogni 2 minuti) **non** usa la chiave.
+
 ## Passo 2 — Account Cloudflare (gratis)
 1. Crea un account su **https://dash.cloudflare.com/sign-up** (gratis, no carta).
 

@@ -21,11 +21,21 @@ export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(eseguiTutto(env).catch((e) => console.error("errore:", e.message)));
   },
-  // Endpoint manuale per testare: apri l'URL del Worker nel browser.
-  // Con ?diag=push mostra quali dispositivi riceverebbero le notifiche.
+  /* Endpoint HTTP di servizio (diagnostica e prove manuali).
+
+     PROTETTO DA CHIAVE. Senza, chiunque indovinasse questo indirizzo
+     potrebbe mandare notifiche a tutti gli iscritti o esaurire la quota
+     giornaliera di API-Football chiamandolo di continuo.
+     Il funzionamento normale non passa di qui: avviene ogni 2 minuti
+     tramite il cron, che non richiede alcuna chiave. */
   async fetch(req, env) {
     try {
       const q = new URL(req.url).searchParams;
+
+      const chiave = env.ADMIN_KEY;
+      if (!chiave || q.get("key") !== chiave) {
+        return json({ error: "accesso non autorizzato" }, 401);
+      }
       if (q.get("diag") === "push") {
         const auth = await getAccessToken(env);
         return json(await diagnosticaPush(auth, { runQuery, fval }));
