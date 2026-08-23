@@ -26,12 +26,6 @@
         ]
       },
       {
-        "source": "/sw.js",
-        "headers": [
-          { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
-        ]
-      },
-      {
         "source": "/version.json",
         "headers": [
           { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
@@ -59,6 +53,19 @@
         "source": "**/*.@(png|jpg|jpeg|webp|svg|ico|gif)",
         "headers": [
           { "key": "Cache-Control", "value": "public, max-age=2592000" }
+        ]
+      },
+      {
+        "//": "I due service worker DEVONO stare in fondo: la regola generica sui .js qui sopra ha la meglio su quelle scritte prima, e li marchiava come immutabili per un anno. Risultato: il dispositivo restava sulla versione vecchia e le correzioni non arrivavano mai (23/08/2026: notifiche mute sull'iPhone). Un service worker va sempre riletto dal server.",
+        "source": "/firebase-messaging-sw.js",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        ]
+      },
+      {
+        "source": "/sw.js",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
         ]
       }
     ]
