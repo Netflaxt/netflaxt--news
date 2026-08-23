@@ -7,37 +7,37 @@
 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://www.netflaxt.it/</loc>
+    <loc>https://netflaxt.it/</loc>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://www.netflaxt.it/news</loc>
+    <loc>https://netflaxt.it/news</loc>
     <changefreq>hourly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://www.netflaxt.it/calendario</loc>
+    <loc>https://netflaxt.it/calendario</loc>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://www.netflaxt.it/pronostici</loc>
+    <loc>https://netflaxt.it/pronostici</loc>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://www.netflaxt.it/about</loc>
+    <loc>https://netflaxt.it/about</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
-    <loc>https://www.netflaxt.it/privacy</loc>
+    <loc>https://netflaxt.it/privacy</loc>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
-    <loc>https://www.netflaxt.it/login</loc>
+    <loc>https://netflaxt.it/login</loc>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>

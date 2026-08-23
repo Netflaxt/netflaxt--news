@@ -7,4 +7,4 @@ Disallow: /profile
 Disallow: /chat
 
 # Sitemap
-Sitemap: https://www.netflaxt.it/sitemap.xml
+Sitemap: https://netflaxt.it/sitemap.xml
