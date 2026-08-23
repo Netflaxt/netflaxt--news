@@ -45,6 +45,26 @@ export default {
         const auth = await getAccessToken(env);
         return json(await inviaProva(auth, { runQuery, patchDoc, leggiDoc, fval }, q.get("testo")));
       }
+
+      /* Prova dell'intera catena: accoda un messaggio e lo spedisce,
+         esattamente come avviene per un gol o per una notizia appena
+         pubblicata. Serve a verificare il percorso completo, non solo
+         l'ultimo passaggio. */
+      if (q.get("prova") === "coda") {
+        const auth = await getAccessToken(env);
+        const accodata = await notifica(auth, {
+          title: q.get("titolo") || "🦅 Prova dalla coda",
+          body: q.get("testo") || "Percorso completo: accodata e spedita.",
+          url: q.get("url") || "/calendario",
+        });
+        const spedizione = await processPushQueue(env, auth, {
+          runQuery,
+          patchDoc,
+          leggiDoc,
+          fval,
+        });
+        return json({ accodata, spedizione });
+      }
       return json(await eseguiTutto(env));
     } catch (e) {
       return json({ error: e.message }, 500);
