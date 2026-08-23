@@ -15,7 +15,7 @@
      TEAM_ID                   (var, default 487 = SS Lazio)
    ───────────────────────────────────────────────────────────── */
 
-import { processPushQueue, diagnosticaPush } from "./push.js";
+import { processPushQueue, diagnosticaPush, inviaProva } from "./push.js";
 
 export default {
   async scheduled(event, env, ctx) {
@@ -25,9 +25,15 @@ export default {
   // Con ?diag=push mostra quali dispositivi riceverebbero le notifiche.
   async fetch(req, env) {
     try {
-      if (new URL(req.url).searchParams.get("diag") === "push") {
+      const q = new URL(req.url).searchParams;
+      if (q.get("diag") === "push") {
         const auth = await getAccessToken(env);
         return json(await diagnosticaPush(auth, { runQuery, fval }));
+      }
+      // Invio di prova con esito dettagliato: ?prova=push
+      if (q.get("prova") === "push") {
+        const auth = await getAccessToken(env);
+        return json(await inviaProva(auth, { runQuery, patchDoc, leggiDoc, fval }, q.get("testo")));
       }
       return json(await eseguiTutto(env));
     } catch (e) {
@@ -50,7 +56,7 @@ async function eseguiTutto(env) {
   }
 
   try {
-    out.notifiche = await processPushQueue(env, auth, { runQuery, patchDoc, fval });
+    out.notifiche = await processPushQueue(env, auth, { runQuery, patchDoc, leggiDoc, fval });
   } catch (e) {
     out.notifiche = { errore: e.message };
   }
@@ -411,6 +417,14 @@ async function runQuery(auth, structuredQuery) {
 
 function patchMatch(auth, id, fields) {
   return patchDoc(auth, `matches/${id}`, fields);
+}
+
+/* Legge un singolo documento (serve per ripulire i dispositivi non più validi) */
+async function leggiDoc(auth, path) {
+  const url = `https://firestore.googleapis.com/v1/projects/${auth.projectId}/databases/(default)/documents/${path}`;
+  const res = await fetch(url, { headers: { authorization: `Bearer ${auth.token}` } });
+  if (!res.ok) return null;
+  return await res.json();
 }
 
 /* Crea un nuovo documento in una collection (serve per accodare le notifiche) */

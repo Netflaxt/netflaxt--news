@@ -34,6 +34,7 @@ export async function diagnosticaPush(auth, helpers) {
   const utenti = await runQuery(auth, { from: [{ collectionId: "users" }], limit: 2000 });
 
   const perTipo = {};
+  const dettagli = [];
   let conToken = 0;
   let tokenTotali = 0;
   const limite = Date.now() - GIORNI_ATTIVITA * 24 * 60 * 60 * 1000;
@@ -60,6 +61,13 @@ export async function diagnosticaPush(auth, helpers) {
         ? "Mac"
         : "altro";
       perTipo[tipo] = (perTipo[tipo] || 0) + 1;
+      dettagli.push({
+        tipo,
+        registratoIl: (f.createdAt?.stringValue || "").slice(0, 16).replace("T", " "),
+        // utile per capire se il dispositivo ha aperto l'app installata
+        // (su iPhone le notifiche funzionano solo da app in schermata Home)
+        browser: /CriOS/i.test(ua) ? "Chrome iOS" : /Safari/i.test(ua) ? "Safari/PWA" : "altro",
+      });
     }
   }
 
@@ -69,6 +77,7 @@ export async function diagnosticaPush(auth, helpers) {
     diCuiAttiviUltimi30gg: attiviRecenti,
     dispositiviRegistrati: tokenTotali,
     perTipoDispositivo: perTipo,
+    dettagli,
   };
 }
 
@@ -154,12 +163,23 @@ async function inviaMessaggio(env, auth, helpers, msg, { patchDoc, fval }) {
   const blocco = destinatari.slice(giaInviati, giaInviati + MAX_INVII_PER_GIRO);
   let ok = 0;
   let ko = 0;
-  for (const token of blocco) {
+  let ultimoErrore = null;
+  let ripuliti = 0;
+  for (const { token, uid } of blocco) {
     // Stesso tag per tutti i dispositivi dello stesso messaggio, diverso
     // fra un messaggio e l'altro (usiamo l'id del documento in coda).
     const esito = await inviaFcm(auth, token, { titolo, testo, url, tag: msg.id });
-    if (esito) ok++;
-    else ko++;
+    if (esito.ok) ok++;
+    else {
+      ko++;
+      ultimoErrore = esito.dettaglio || `HTTP ${esito.stato}`;
+      // 404 = il dispositivo non esiste più: togliamolo dall'elenco,
+      // così non ci riproviamo a ogni invio.
+      if (esito.stato === 404) {
+        await rimuoviTokenMorto(auth, uid, token, helpers);
+        ripuliti++;
+      }
+    }
   }
 
   const totaleInviati = giaInviati + blocco.length;
@@ -171,6 +191,7 @@ async function inviaMessaggio(env, auth, helpers, msg, { patchDoc, fval }) {
     status: finito ? "sent" : "queued",
     sentCount: totaleInviati,
     failedCount: ko,
+    ...(ultimoErrore ? { error: String(ultimoErrore).slice(0, 300) } : {}),
     ...(finito ? { sentAt: new Date() } : {}),
   });
 
@@ -193,7 +214,9 @@ async function raccogliToken(auth, runQuery, fval, audience) {
   });
 
   const limite = Date.now() - GIORNI_ATTIVITA * 24 * 60 * 60 * 1000;
-  const token = new Set();
+  // Teniamo anche a chi appartiene ogni token: serve per poterlo
+  // cancellare quando il dispositivo non esiste più.
+  const visti = new Map(); // token -> uid
 
   for (const u of utenti) {
     if (audience === "subscribed-only") {
@@ -204,33 +227,74 @@ async function raccogliToken(auth, runQuery, fval, audience) {
     if (!Array.isArray(arr)) continue;
     for (const v of arr) {
       const t = v?.mapValue?.fields?.token?.stringValue || v?.stringValue;
-      if (t) token.add(t);
+      if (t && !visti.has(t)) visti.set(t, u.id);
     }
   }
-  return [...token];
+  return [...visti.entries()].map(([token, uid]) => ({ token, uid }));
 }
 
-/* Invio singolo tramite FCM HTTP v1. Ritorna true se accettato.
+/* Elimina dal profilo dell'utente un dispositivo che non esiste più
+   (app disinstallata, notifiche revocate, sottoscrizione scaduta).
+   Senza questa pulizia i collegamenti morti si accumulano e ogni invio
+   spreca chiamate verso destinatari inesistenti. */
+async function rimuoviTokenMorto(auth, uid, tokenMorto, helpers) {
+  if (!uid || !tokenMorto) return;
+  const { leggiDoc, patchDoc } = helpers;
+  try {
+    const doc = await leggiDoc(auth, `users/${uid}`);
+    const arr = doc?.fields?.pushTokens?.arrayValue?.values;
+    if (!Array.isArray(arr)) return;
 
-   IMPORTANTE — perché mandiamo SOLO `data` e nessun campo `notification`:
-   se il messaggio contiene `notification`, il browser mostra la notifica
-   da solo; ma il nostro service worker ne mostra un'altra con
-   showNotification() → l'utente ne vedrebbe DUE identiche.
-   Mandando solo i dati, il service worker resta l'unico a mostrarla. */
+    // Togliamo il token morto e, già che ci siamo, eventuali doppioni
+    const tenuti = [];
+    const giaVisti = new Set();
+    for (const v of arr) {
+      const f = v?.mapValue?.fields || {};
+      const t = f.token?.stringValue || v?.stringValue;
+      if (!t || t === tokenMorto || giaVisti.has(t)) continue;
+      giaVisti.add(t);
+      tenuti.push({
+        token: t,
+        ua: f.ua?.stringValue || "",
+        createdAt: f.createdAt?.stringValue || "",
+      });
+    }
+    if (tenuti.length === arr.length) return; // niente da cambiare
+
+    await patchDoc(auth, `users/${uid}`, { pushTokens: tenuti });
+  } catch (e) {
+    console.error("pulizia token fallita:", e.message);
+  }
+}
+
+/* Invio singolo tramite FCM HTTP v1. Ritorna { ok, stato, dettaglio }.
+
+   IMPORTANTE — il messaggio contiene il campo `notification`, quindi è il
+   browser stesso a mostrarla. Il service worker NON deve mostrarne un'altra
+   (vedi firebase-messaging-sw.js), altrimenti se ne vedono due.
+   Non usiamo messaggi di soli dati perché su iPhone non sono affidabili:
+   iOS pretende che a ogni push corrisponda una notifica visibile. */
 async function inviaFcm(auth, token, { titolo, testo, url, tag }) {
   const endpoint = `https://fcm.googleapis.com/v1/projects/${auth.projectId}/messages:send`;
+  const link = assolutizza(url);
   const body = {
     message: {
       token,
-      data: {
-        title: titolo,
-        body: testo,
-        url: assolutizza(url),
-        // tag diverso per ogni messaggio: così due notifiche successive
-        // restano entrambe visibili invece di sostituirsi a vicenda
-        tag: tag || `netflaxt-${Date.now()}`,
+      notification: { title: titolo, body: testo },
+      data: { url: link },
+      webpush: {
+        headers: { Urgency: "high" },
+        notification: {
+          title: titolo,
+          body: testo,
+          icon: "/icon-192.png",
+          badge: "/icon-192.png",
+          // tag diverso per messaggio: due notifiche di seguito restano
+          // entrambe visibili invece di sostituirsi a vicenda
+          tag: tag || `netflaxt-${Date.now()}`,
+        },
+        fcm_options: { link },
       },
-      webpush: { headers: { Urgency: "high" } },
     },
   };
 
@@ -243,13 +307,45 @@ async function inviaFcm(auth, token, { titolo, testo, url, tag }) {
       },
       body: JSON.stringify(body),
     });
-    if (res.ok) return true;
-    // 404/403 = token non più valido (app disinstallata, permesso revocato):
-    // non è un errore da segnalare, semplicemente quel dispositivo non c'è più.
-    return false;
-  } catch {
-    return false;
+    if (res.ok) return { ok: true };
+    // Teniamo il motivo: senza, un invio fallito è invisibile e diventa
+    // impossibile capire perché le notifiche non arrivano.
+    const dettaglio = (await res.text()).slice(0, 300);
+    console.error(`FCM ${res.status}: ${dettaglio}`);
+    return { ok: false, stato: res.status, dettaglio };
+  } catch (e) {
+    return { ok: false, dettaglio: e.message };
   }
+}
+
+/* Invio di prova verso tutti i dispositivi registrati, con esito
+   dettagliato. Serve per capire cosa risponde davvero FCM. */
+export async function inviaProva(auth, helpers, testo) {
+  const { runQuery, fval } = helpers;
+  const destinatari = await raccogliToken(auth, runQuery, fval, "all");
+  if (!destinatari.length) return { errore: "nessun dispositivo registrato" };
+
+  const esiti = [];
+  let ripuliti = 0;
+  for (const { token, uid } of destinatari) {
+    const r = await inviaFcm(auth, token, {
+      titolo: "🦅 Prova Netflaxt",
+      testo: testo || "Se leggi questo, le notifiche funzionano!",
+      url: "/",
+      tag: `prova-${Date.now()}`,
+    });
+    // Dispositivo non più esistente: lo togliamo dall'elenco
+    if (!r.ok && r.stato === 404 && helpers.leggiDoc) {
+      await rimuoviTokenMorto(auth, uid, token, helpers);
+      ripuliti++;
+    }
+    esiti.push({
+      dispositivo: token.slice(0, 12) + "…",
+      inviata: r.ok,
+      ...(r.ok ? {} : { stato: r.stato, rimosso: r.stato === 404 }),
+    });
+  }
+  return { destinatari: destinatari.length, esiti, dispositiviRimossi: ripuliti };
 }
 
 /* Il link della notifica deve essere assoluto, altrimenti il click non apre nulla */

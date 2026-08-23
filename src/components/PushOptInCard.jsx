@@ -26,6 +26,33 @@ export default function PushOptInCard({ user }) {
     }
   }, [user?.uid]);
 
+  /* Notifica generata dal dispositivo stesso, senza passare dal server.
+     Serve a distinguere due problemi diversi: se questa NON compare, il
+     permesso è stato revocato dalle impostazioni del telefono; se compare
+     ma quelle del sito no, il problema è nella consegna. */
+  const handleProva = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification("🦅 Prova Netflaxt", {
+        body: "Se leggi questo, il tuo dispositivo mostra le notifiche.",
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+        tag: `prova-${Date.now()}`,
+      });
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 4000);
+    } catch (e) {
+      setError(
+        e?.message ||
+          "Il dispositivo non ha mostrato la notifica: controlla i permessi nelle impostazioni."
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleEnable = async () => {
     setBusy(true);
     setError("");
@@ -117,10 +144,31 @@ export default function PushOptInCard({ user }) {
       )}
 
       {enabled && (
-        <div className="mt-3 text-xs text-text-muted">
-          Notifiche attive su {tokens.length}{" "}
-          {tokens.length === 1 ? "dispositivo" : "dispositivi"}.
-        </div>
+        <>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleProva}
+              disabled={busy}
+              className="px-4 py-2 rounded-md bg-bg-elevated border border-border text-text-primary text-xs font-bold uppercase tracking-wider hover:border-accent/40 transition disabled:opacity-50"
+            >
+              Prova qui
+            </button>
+            <button
+              onClick={handleEnable}
+              disabled={busy}
+              className="px-4 py-2 rounded-md bg-bg-elevated border border-border text-text-secondary text-xs font-bold uppercase tracking-wider hover:border-accent/40 transition disabled:opacity-50"
+            >
+              Riattiva su questo dispositivo
+            </button>
+          </div>
+          <div className="mt-3 text-xs text-text-muted">
+            Notifiche attive su {tokens.length}{" "}
+            {tokens.length === 1 ? "dispositivo" : "dispositivi"}.{" "}
+            <strong className="text-text-secondary">Prova qui</strong> controlla
+            che il telefono le mostri; se non compare nulla, il permesso è stato
+            tolto dalle impostazioni del dispositivo.
+          </div>
+        </>
       )}
     </div>
   );

@@ -20,23 +20,15 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Notifica in background (app chiusa / tab non in foreground).
-// I messaggi arrivano SENZA il campo `notification` (solo `data`): così la
-// mostriamo noi una volta sola. Se il messaggio contenesse `notification`,
-// il browser ne mostrerebbe una in automatico e questa sarebbe la seconda.
-messaging.onBackgroundMessage((payload) => {
-  const d = payload?.data || {};
-  const title = d.title || payload?.notification?.title || "Netflaxt News";
-  const options = {
-    body: d.body || payload?.notification?.body || "",
-    icon: "/icon-192.png",
-    badge: "/icon-192.png",
-    data: d,
-    // tag diverso per messaggio: due notifiche di seguito restano
-    // entrambe visibili invece di sostituirsi
-    tag: d.tag || `netflaxt-${Date.now()}`,
-  };
-  self.registration.showNotification(title, options);
+/* ATTENZIONE — qui NON si deve chiamare showNotification().
+
+   I messaggi inviati dal server contengono il campo `notification`, quindi
+   è il browser stesso a mostrare la notifica. Se la mostrassimo anche qui,
+   l'utente ne vedrebbe DUE identiche (è già successo: bug corretto il
+   23/08/2026). Questo handler serve solo a intercettare il messaggio, per
+   esempio se un domani volessimo aggiornare un contatore. */
+messaging.onBackgroundMessage(() => {
+  // Nessuna azione: la notifica è già mostrata dal browser.
 });
 
 // Click → apri/porta in foreground il sito al link giusto
