@@ -44,7 +44,7 @@ import { useAuth } from "./context/AuthContext";
 import useEnsureUserDoc from "./hooks/useEnsureUserDoc";
 import useDeviceTracking from "./hooks/useDeviceTracking";
 import useTwemoji from "./hooks/useTwemoji";
-import { initAnalytics, syncConsent } from "./utils/analytics";
+import { initAnalytics, syncConsent, trackPageView } from "./utils/analytics";
 
 /* Scroll-to-top + page fade-in al cambio route */
 function RouteEffects() {
@@ -52,7 +52,10 @@ function RouteEffects() {
   useEffect(() => {
     // Salta scroll-to-top quando torniamo allo stesso path
     window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
-  }, [location.pathname]);
+    // Il sito cambia pagina senza ricaricare il browser: segnaliamo noi la
+    // visita, altrimenti le statistiche conterebbero solo la prima schermata.
+    trackPageView(location.pathname + location.search);
+  }, [location.pathname, location.search]);
   return null;
 }
 
