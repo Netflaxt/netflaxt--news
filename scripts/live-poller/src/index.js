@@ -15,15 +15,20 @@
      TEAM_ID                   (var, default 487 = SS Lazio)
    ───────────────────────────────────────────────────────────── */
 
-import { processPushQueue } from "./push.js";
+import { processPushQueue, diagnosticaPush } from "./push.js";
 
 export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(eseguiTutto(env).catch((e) => console.error("errore:", e.message)));
   },
-  // Endpoint manuale per testare: apri l'URL del Worker nel browser
+  // Endpoint manuale per testare: apri l'URL del Worker nel browser.
+  // Con ?diag=push mostra quali dispositivi riceverebbero le notifiche.
   async fetch(req, env) {
     try {
+      if (new URL(req.url).searchParams.get("diag") === "push") {
+        const auth = await getAccessToken(env);
+        return json(await diagnosticaPush(auth, { runQuery, fval }));
+      }
       return json(await eseguiTutto(env));
     } catch (e) {
       return json({ error: e.message }, 500);
@@ -129,10 +134,36 @@ async function poll(env, authCondiviso) {
     // così un vuoto temporaneo dell'API non cancella quello già salvato.
     if (events) fields.events = events;
 
+    /* ── Notifiche automatiche ────────────────────────────────
+       Solo gli eventi che contano davvero: fischio d'inizio e gol.
+       Ammonizioni e sostituzioni NON generano notifiche, altrimenti
+       il telefono dei tifosi suonerebbe dieci volte a partita. */
+    const casa = cleanTeam(fx.teams?.home?.name) || fval(m.fields.homeTeam) || "Casa";
+    const ospite = cleanTeam(fx.teams?.away?.name) || fval(m.fields.awayTeam) || "Ospite";
+
+    // Fischio d'inizio: la partita compare tra le live per la prima volta
+    if (!curLive) {
+      await notifica(auth, {
+        title: "⚽ Si comincia!",
+        body: `${casa} - ${ospite}: la partita è iniziata. Segui la diretta su Netflaxt.`,
+      });
+    } else {
+      // Gol: il punteggio è cambiato rispetto a quello salvato
+      const primaCasa = fval(m.fields.liveHome) ?? 0;
+      const primaOspite = fval(m.fields.liveAway) ?? 0;
+      if (home !== primaCasa || away !== primaOspite) {
+        const laLazioHaSegnato = segnaLazio(env, fx, home, away, primaCasa, primaOspite);
+        await notifica(auth, {
+          title: laLazioHaSegnato ? "🦅 GOL DELLA LAZIO!" : "⚽ Gol",
+          body: `${casa} ${home} - ${away} ${ospite}${marcatore(events, home + away)}`,
+        });
+      }
+    }
+
     // Se l'API dichiara la partita conclusa mentre è ancora in lista,
     // finalizziamo subito con i dati definitivi.
     if (FINISHED.includes(short)) {
-      return await finalize(auth, m.id, home, away, events, "api");
+      return await finalize(auth, m.id, home, away, events, "api", { casa, ospite });
     }
 
     await patchMatch(auth, m.id, fields);
@@ -146,7 +177,10 @@ async function poll(env, authCondiviso) {
     const home = fval(m.fields.liveHome) ?? 0;
     const away = fval(m.fields.liveAway) ?? 0;
     const events = readEvents(m.fields.events);
-    return await finalize(auth, m.id, home, away, events, "uscita-dalle-live");
+    return await finalize(auth, m.id, home, away, events, "uscita-dalle-live", {
+      casa: fval(m.fields.homeTeam),
+      ospite: fval(m.fields.awayTeam),
+    });
   }
   return { skipped: "non in corso", curLive };
 }
@@ -155,7 +189,7 @@ async function poll(env, authCondiviso) {
    Scrive il risultato definitivo, chiude lo stato live e assegna i
    punti ai pronostici (stessa logica di scoreMatch lato sito:
    3 punti al risultato esatto, 1 all'esito 1X2). ─────────────── */
-async function finalize(auth, matchId, home, away, events, origine) {
+async function finalize(auth, matchId, home, away, events, origine, squadre = {}) {
   const fields = {
     homeScore: home,
     awayScore: away,
@@ -170,6 +204,15 @@ async function finalize(auth, matchId, home, away, events, origine) {
   await patchMatch(auth, matchId, fields);
 
   const punti = await scorePredictions(auth, matchId, home, away);
+
+  // Notifica con il risultato finale
+  const casa = squadre.casa || "Casa";
+  const ospite = squadre.ospite || "Ospite";
+  await notifica(auth, {
+    title: "🏁 Fine partita",
+    body: `${casa} ${home} - ${away} ${ospite}. Guarda il tabellino e i punti dei pronostici.`,
+  });
+
   return { finalizzata: matchId, risultato: `${home}-${away}`, eventi: events?.length ?? 0, pronosticiValutati: punti, origine };
 }
 
@@ -274,6 +317,41 @@ function mapEvents(raw, homeTeamId) {
   return out;
 }
 
+/* ── Supporto per le notifiche automatiche ────────────────────── */
+
+/* Nomi come li scrive il sito: "SS Lazio" → "Lazio", "AC Milan" → "Milan" */
+function cleanTeam(nome) {
+  if (!nome) return "";
+  return (
+    nome
+      .replace(/\b(AC|FC|SS|SSC|AS|US|ACF|Calcio|1907|1909|1913)\b/g, "")
+      .replace(/\s+/g, " ")
+      .trim() || nome.trim()
+  );
+}
+
+/* Ha segnato la Lazio? Dipende da che lato del campo si trova. */
+function segnaLazio(env, fx, home, away, primaCasa, primaOspite) {
+  const teamId = String(env.TEAM_ID || "487");
+  const lazioInCasa = String(fx.teams?.home?.id) === teamId;
+  return lazioInCasa ? home > primaCasa : away > primaOspite;
+}
+
+/* Chi ha segnato l'ultimo gol, per il testo della notifica.
+   Restituisce " · Zaccagni 12'" oppure "" se il dato non c'è. */
+function marcatore(events, golAttesi) {
+  if (!Array.isArray(events) || !events.length) return "";
+  const gol = events.filter((e) => ["goal", "penalty", "owngoal"].includes(e.type));
+  // Se il tabellino non è ancora allineato al punteggio, meglio tacere
+  // che annunciare il marcatore sbagliato.
+  if (gol.length !== golAttesi) return "";
+  const ultimo = gol[gol.length - 1];
+  if (!ultimo?.player) return "";
+  const suffisso =
+    ultimo.type === "penalty" ? " (rig.)" : ultimo.type === "owngoal" ? " (aut.)" : "";
+  return ` · ${ultimo.player}${suffisso} ${ultimo.minute}'`;
+}
+
 /* Rilegge il tabellino già salvato su Firestore (formato typed values) */
 function readEvents(field) {
   const vals = field?.arrayValue?.values;
@@ -333,6 +411,39 @@ async function runQuery(auth, structuredQuery) {
 
 function patchMatch(auth, id, fields) {
   return patchDoc(auth, `matches/${id}`, fields);
+}
+
+/* Crea un nuovo documento in una collection (serve per accodare le notifiche) */
+async function createDoc(auth, collection, fields) {
+  const url = `https://firestore.googleapis.com/v1/projects/${auth.projectId}/databases/(default)/documents/${collection}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { authorization: `Bearer ${auth.token}`, "content-type": "application/json" },
+    body: JSON.stringify({ fields: toFields(fields) }),
+  });
+  if (!res.ok) throw new Error(`create HTTP ${res.status}: ${await res.text()}`);
+  return await res.json();
+}
+
+/* Mette una notifica in coda: la spedirà processPushQueue allo stesso giro
+   o al successivo. Se fallisce non deve MAI bloccare l'aggiornamento della
+   partita, quindi l'errore viene solo annotato. */
+async function notifica(auth, { title, body, url = "/calendario" }) {
+  try {
+    await createDoc(auth, "pushQueue", {
+      title,
+      body,
+      url,
+      audience: "all",
+      status: "queued",
+      createdAt: new Date(),
+      origine: "automatica",
+    });
+    return true;
+  } catch (e) {
+    console.error("notifica non accodata:", e.message);
+    return false;
+  }
 }
 
 /* Aggiorna un documento qualsiasi (matches, predictions, …) */

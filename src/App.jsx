@@ -32,6 +32,7 @@ const Classifica = lazy(() => import("./pages/Classifica"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 
 import ErrorBoundary from "./components/ErrorBoundary";
+import PushNudge from "./components/PushNudge";
 import CookieBanner from "./components/CookieBanner";
 import InstallPrompt from "./components/InstallPrompt";
 import SiteStatusModal from "./components/SiteStatusModal";
@@ -109,6 +110,9 @@ function App() {
 
       {/* Cookie banner globale */}
       <CookieBanner />
+
+      {/* 🔔 Invito discreto ad attivare le notifiche (solo se loggato) */}
+      <PushNudge />
 
       {/* ✨ Fase 4 — Banner "Installa app" su mobile/desktop supportati */}
       <InstallPrompt />

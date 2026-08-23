@@ -24,6 +24,54 @@ const MAX_MESSAGGI_PER_GIRO = 3;
  * @param helpers funzioni Firestore condivise col poller
  *        (passate come argomento per non creare import circolari)
  */
+/**
+ * Diagnostica: quali dispositivi riceverebbero davvero una notifica.
+ * Restituisce solo conteggi aggregati per tipo di dispositivo — nessun
+ * dato personale, perché l'indirizzo del Worker è pubblico.
+ */
+export async function diagnosticaPush(auth, helpers) {
+  const { runQuery, fval } = helpers;
+  const utenti = await runQuery(auth, { from: [{ collectionId: "users" }], limit: 2000 });
+
+  const perTipo = {};
+  let conToken = 0;
+  let tokenTotali = 0;
+  const limite = Date.now() - GIORNI_ATTIVITA * 24 * 60 * 60 * 1000;
+  let attiviRecenti = 0;
+
+  for (const u of utenti) {
+    const arr = u.fields.pushTokens?.arrayValue?.values;
+    if (!Array.isArray(arr) || !arr.length) continue;
+    conToken++;
+    const recente = (fval(u.fields.lastSeenAt) || 0) >= limite;
+    if (recente) attiviRecenti++;
+    for (const v of arr) {
+      const f = v?.mapValue?.fields || {};
+      if (!f.token?.stringValue) continue;
+      tokenTotali++;
+      const ua = f.ua?.stringValue || "";
+      const tipo = /iPhone|iPad|iPod/i.test(ua)
+        ? "iPhone/iPad"
+        : /Android/i.test(ua)
+        ? "Android"
+        : /Windows/i.test(ua)
+        ? "Windows"
+        : /Mac/i.test(ua)
+        ? "Mac"
+        : "altro";
+      perTipo[tipo] = (perTipo[tipo] || 0) + 1;
+    }
+  }
+
+  return {
+    utentiTotali: utenti.length,
+    utentiConNotificheAttive: conToken,
+    diCuiAttiviUltimi30gg: attiviRecenti,
+    dispositiviRegistrati: tokenTotali,
+    perTipoDispositivo: perTipo,
+  };
+}
+
 export async function processPushQueue(env, auth, helpers) {
   const { runQuery, patchDoc, fval } = helpers;
 

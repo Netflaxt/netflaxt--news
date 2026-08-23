@@ -27,6 +27,7 @@ import {
   suspensionDurationLabel,
 } from "../utils/moderationService";
 import { JOURNALIST_SOURCES } from "../utils/sources";
+import { enqueuePushNotification } from "../utils/push";
 import {
   InboxIcon, MailIcon, EmptyIcon,
   DashboardIcon, PencilIcon, CogIcon, HeartIcon, BarsIcon,
@@ -282,16 +283,36 @@ export default function Admin() {
     e.preventDefault();
     setLoading(true);
     try {
-      await addDoc(collection(db, "articles"), {
+      const nuovo = await addDoc(collection(db, "articles"), {
         title, excerpt, content, category, imageUrl,
         video: video || null,
         featured, source, sourceUrl, journalist,
         author: "Mattia", date: Timestamp.now(),
       });
+
+      // Avvisa i tifosi che hanno attivato le notifiche. Se fallisce non
+      // deve far sembrare fallita la pubblicazione: l'articolo è già online.
+      let avvisati = true;
+      try {
+        await enqueuePushNotification({
+          title: "📰 Nuova notizia su Netflaxt",
+          body: title,
+          url: `/news/${nuovo.id}`,
+        });
+      } catch (err) {
+        console.error("Notifica non inviata:", err);
+        avvisati = false;
+      }
+
       setTitle(""); setExcerpt(""); setContent(""); setImageUrl("");
       setSource(""); setSourceUrl(""); setJournalist(""); setFeatured(false);
       setVideo(null);
-      showToast("Articolo pubblicato con successo!", "success");
+      showToast(
+        avvisati
+          ? "Articolo pubblicato! Notifica in arrivo ai tifosi."
+          : "Articolo pubblicato (notifica non inviata)",
+        avvisati ? "success" : "danger"
+      );
       window.scrollTo({ top: 0, behavior: "smooth" });
       fetchArticles(); // ricarica per aggiornare le statistiche
     } catch (error) {
