@@ -52,6 +52,30 @@ function ripiegoNecessario(err, durataMs) {
   return false;
 }
 
+/* Siamo dentro il browser incorporato di un'altra app?
+   (Instagram, Facebook, TikTok e simili aprono i link in un browser
+   loro, non in Safari o Chrome.)
+
+   Conta perché lì l'accesso con Google NON può funzionare in nessuno
+   dei due modi: la finestra viene bloccata, e il ripiego a pagina
+   intera si interrompe perché quei browser cancellano la memoria
+   temporanea durante il passaggio — l'utente finisce su una pagina
+   bianca con un errore in inglese (segnalato da un tifoso il
+   24/08/2026, arrivava dal link nella biografia di Instagram).
+   Meglio dirglielo prima, invece di mandarlo a sbattere. */
+function dentroBrowserDiUnApp() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  return /Instagram|FBAN|FBAV|FB_IAB|FBIOS|TikTok|Snapchat|Twitter|Line\/|MicroMessenger|WhatsApp|Threads/i.test(
+    ua
+  );
+}
+
+const AVVISO_BROWSER_APP =
+  "Stai aprendo il sito dentro un'altra app, e da qui Google non permette l'accesso. " +
+  "Apri netflaxt.it nel browser del telefono (tocca i tre puntini in alto e scegli " +
+  "\"Apri in Safari\" o \"Apri in Chrome\"), oppure entra qui sotto con email e password.";
+
 const IG_POPUP_LS_KEY = "netflaxt_ig_popup_dismissed";
 const IG_URL = "https://www.instagram.com/netflaxt";
 
@@ -74,6 +98,9 @@ export default function Login() {
   const [unverifiedEmail, setUnverifiedEmail] = useState(null);
   const [resending, setResending] = useState(false);
   const [mounted, setMounted] = useState(false);
+  // Browser incorporato di un'altra app (Instagram, Facebook…): l'accesso
+  // con Google non puo funzionare, vedi nota in cima al file.
+  const [browserIncorporato] = useState(() => dentroBrowserDiUnApp());
 
   // Popup Instagram
   const [igPopupVisible, setIgPopupVisible] = useState(false);
@@ -183,6 +210,21 @@ export default function Login() {
     // e non resta traccia di cosa sia andato storto: impossibile capirlo
     // a distanza quando un tifoso segnala "non riesco ad accedere".
     console.error("Accesso non riuscito:", err?.code, err?.message);
+
+    // Browser incorporato di un'altra app: il messaggio è già pronto
+    if (err.code === "netflaxt/browser-incorporato") return err.message;
+
+    /* Il passaggio verso Google si è interrotto perché il browser ha
+       perso la memoria temporanea. Succede nei browser incorporati e
+       in navigazione privata: senza questo caso l'utente vedeva solo
+       un generico "Errore. Riprova" e riprovava all'infinito. */
+    if (
+      err.code === "auth/missing-initial-state" ||
+      err.code === "auth/web-storage-unsupported" ||
+      /missing initial state/i.test(err?.message || "")
+    ) {
+      return AVVISO_BROWSER_APP;
+    }
 
     if (err.code === "auth/invalid-credential" || err.code === "auth/wrong-password") {
       return "Email o password non corretti. Riprova o usa 'Password dimenticata?'.";
@@ -314,6 +356,15 @@ export default function Login() {
      Restituisce le credenziali, oppure null se si sta uscendo dalla
      pagina per andare su Google (in quel caso si prosegue al ritorno). */
   const avviaAccessoGoogle = async () => {
+    /* Nel browser incorporato di un'altra app non si tenta nemmeno:
+       fallirebbero sia la finestra sia la pagina intera, e l'utente
+       resterebbe su una schermata di errore da cui non sa tornare. */
+    if (dentroBrowserDiUnApp()) {
+      const e = new Error(AVVISO_BROWSER_APP);
+      e.code = "netflaxt/browser-incorporato";
+      throw e;
+    }
+
     const apertoIl = Date.now();
     try {
       /* ⚠️ NON mettere attese prima di questa riga.
@@ -847,11 +898,27 @@ export default function Login() {
                 </div>
               </div>
 
+              {/* Avviso PRIMA del tentativo, non dopo l'errore: da qui
+                  l'accesso con Google non può riuscire, ed è meglio che
+                  l'utente lo sappia prima di restare su una pagina
+                  bianca senza sapere come tornare indietro. */}
+              {browserIncorporato && (
+                <div className="mb-3 rounded-md border border-warning/40 bg-warning/5 px-4 py-3 text-[13px] leading-relaxed text-text-secondary">
+                  <span className="font-bold text-warning">
+                    Stai aprendo il sito dentro un'altra app.
+                  </span>{" "}
+                  Da qui Google non permette l'accesso. Apri{" "}
+                  <span className="font-semibold text-text-primary">netflaxt.it</span> nel
+                  browser del telefono — tocca i tre puntini in alto e scegli «Apri in
+                  Safari» o «Apri in Chrome» — oppure entra qui sopra con email e password.
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={handleGoogle}
-                disabled={loading}
-                className="group w-full py-3 rounded-md border border-border hover:border-border-strong hover:bg-bg-elevated text-text-primary font-semibold transition-all duration-300 flex items-center justify-center gap-3 hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0"
+                disabled={loading || browserIncorporato}
+                className="group w-full py-3 rounded-md border border-border hover:border-border-strong hover:bg-bg-elevated text-text-primary font-semibold transition-all duration-300 flex items-center justify-center gap-3 hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0 disabled:cursor-not-allowed"
               >
                 <GoogleIcon className="w-5 h-5" />
                 <span>Continua con Google</span>
