@@ -11,6 +11,12 @@ import {
   signOut,
 } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import {
+  verificaDispositivo,
+  inviaEmailApprovazione,
+  dispositivoApprovato,
+} from "../utils/deviceApproval";
+import { ShieldIcon } from "../components/icons";
 
 /* Conferma email per utenti Google.
    - 1° login Google: doc Firestore con requireEmailConfirm=true → invio email
@@ -39,6 +45,8 @@ export default function Login() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [verifiedScreen, setVerifiedScreen] = useState(false);
+  // Accesso sospeso: dispositivo in attesa di conferma via email
+  const [attesaDispositivo, setAttesaDispositivo] = useState(null);
   // ✨ FIX FASE 3.5 — gestione email non verificata al login
   const [unverifiedEmail, setUnverifiedEmail] = useState(null);
   const [resending, setResending] = useState(false);
@@ -192,6 +200,14 @@ export default function Login() {
           );
           return;
         }
+        // Dispositivo mai visto? L'accesso resta sospeso finché non
+        // viene confermato dall'email dell'account.
+        const controllo = await verificaDispositivo(cred.user);
+        if (controllo.esito === "attesa") {
+          await signOut(auth);
+          setAttesaDispositivo({ uid: cred.user.uid, email: cred.user.email });
+          return;
+        }
         navigate("/");
       }
     } catch (err) {
@@ -241,6 +257,12 @@ export default function Login() {
 
       // Utente esistente e già confermato → entra subito
       if (userData && userData.requireEmailConfirm !== true) {
+        const controllo = await verificaDispositivo(cred.user);
+        if (controllo.esito === "attesa") {
+          await signOut(auth);
+          setAttesaDispositivo({ uid: cred.user.uid, email: cred.user.email });
+          return;
+        }
         navigate("/");
         return;
       }
@@ -321,6 +343,21 @@ export default function Login() {
   };
 
   // Schermata di conferma dopo registrazione
+  // Accesso sospeso: si entra solo dopo aver aperto il link ricevuto
+  // via email. La schermata controlla da sola quando è stato fatto, così
+  // non c'è bisogno di accedere di nuovo a mano.
+  if (attesaDispositivo) {
+    return (
+      <AttesaConferma
+        dati={attesaDispositivo}
+        onSbloccato={() => {
+          setAttesaDispositivo(null);
+          setSuccess("Dispositivo confermato! Adesso puoi accedere.");
+        }}
+      />
+    );
+  }
+
   if (verifiedScreen) {
     return (
       <main className="min-h-[calc(100vh-4rem)] bg-bg-base text-text-primary flex items-center justify-center px-6 relative overflow-hidden">
@@ -917,5 +954,102 @@ function GoogleIcon({ className = "" }) {
       <path fill="#FBBC05" d="M6.4 13.7c-.2-.6-.3-1.2-.3-1.7 0-.6.1-1.2.3-1.7V7.8H3.1C2.4 9.1 2 10.5 2 12s.4 2.9 1.1 4.2l3.3-2.5z"/>
       <path fill="#EA4335" d="M12 6.2c1.5 0 2.8.5 3.8 1.5l2.8-2.8C16.9 3.3 14.7 2.4 12 2.4 8.1 2.4 4.7 4.6 3.1 7.8l3.3 2.5C7.2 7.9 9.4 6.2 12 6.2z"/>
     </svg>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Schermata mostrata quando si accede da un dispositivo mai visto.
+
+   Controlla da sola, ogni pochi secondi, se il link nell'email è stato
+   aperto: quando succede sblocca senza che l'utente debba accorgersene
+   o rifare l'accesso. Il pulsante "Rimanda" copre il caso più comune,
+   cioè l'email finita nello spam o mai arrivata.
+   ───────────────────────────────────────────────────────────── */
+function AttesaConferma({ dati, onSbloccato }) {
+  const [rinvio, setRinvio] = useState("fermo"); // fermo | corso | fatto | errore
+
+  // Controlla periodicamente se nel frattempo è stato confermato
+  useEffect(() => {
+    let vivo = true;
+    const t = setInterval(async () => {
+      const ok = await dispositivoApprovato(dati.uid);
+      if (ok && vivo) {
+        clearInterval(t);
+        onSbloccato();
+      }
+    }, 4000);
+    return () => {
+      vivo = false;
+      clearInterval(t);
+    };
+  }, [dati.uid, onSbloccato]);
+
+  const rimanda = async () => {
+    setRinvio("corso");
+    const ok = await inviaEmailApprovazione(dati.uid);
+    setRinvio(ok ? "fatto" : "errore");
+  };
+
+  return (
+    <main className="min-h-[calc(100vh-4rem)] bg-bg-base text-text-primary flex items-center justify-center px-6 relative overflow-hidden">
+      <div className="absolute inset-0 -z-10">
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-accent/12 rounded-full blur-[140px]" />
+      </div>
+
+      <div className="w-full max-w-md text-center">
+        <div className="inline-flex w-14 h-14 rounded-xl bg-accent/10 border border-accent/30 items-center justify-center mb-5">
+          <ShieldIcon className="w-6 h-6 text-accent" />
+        </div>
+
+        <h1
+          className="text-4xl sm:text-5xl text-text-primary leading-none"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
+          CONFERMA L'ACCESSO
+        </h1>
+
+        <p className="mt-4 text-text-secondary text-sm leading-relaxed">
+          Stai entrando da un dispositivo che non abbiamo mai visto. Per
+          sicurezza ti abbiamo mandato un'email a{" "}
+          <strong className="text-text-primary">{dati.email}</strong>: aprila e
+          clicca il pulsante di conferma.
+        </p>
+
+        <div className="mt-6 p-3 rounded-lg bg-bg-elevated border border-border text-xs text-text-muted">
+          Questa pagina si sblocca da sola appena confermi. Puoi lasciarla
+          aperta.
+        </div>
+
+        <div className="mt-6">
+          {rinvio === "fatto" ? (
+            <p className="text-xs text-success font-semibold">
+              ✓ Email rimandata. Controlla anche nello spam.
+            </p>
+          ) : (
+            <button
+              onClick={rimanda}
+              disabled={rinvio === "corso"}
+              className="px-5 py-2.5 rounded-md bg-bg-elevated border border-border text-text-primary text-xs font-bold uppercase tracking-wider hover:border-accent/40 transition disabled:opacity-60"
+            >
+              {rinvio === "corso" ? "Invio…" : "Non è arrivata? Rimanda"}
+            </button>
+          )}
+          {rinvio === "errore" && (
+            <p className="mt-2 text-xs text-error">
+              Invio non riuscito. Riprova fra poco.
+            </p>
+          )}
+        </div>
+
+        <div className="mt-8">
+          <Link
+            to="/"
+            className="text-xs uppercase tracking-wider text-text-muted hover:text-accent transition"
+          >
+            ← Torna alla home
+          </Link>
+        </div>
+      </div>
+    </main>
   );
 }

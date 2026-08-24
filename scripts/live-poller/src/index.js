@@ -17,6 +17,7 @@
 
 import { processPushQueue, diagnosticaPush, inviaProva } from "./push.js";
 import { processNewsletter, disiscrivi } from "./newsletter.js";
+import { richiediApprovazione, confermaDispositivo } from "./accessi.js";
 
 export default {
   async scheduled(event, env, ctx) {
@@ -39,6 +40,33 @@ export default {
       if (q.get("disiscrivi")) {
         const auth = await getAccessToken(env);
         const esito = await disiscrivi(auth, { runQuery, eliminaDoc }, q.get("disiscrivi"));
+        return json(esito, esito.ok ? 200 : 404);
+      }
+
+      /* Accesso da un dispositivo nuovo. Anche questi due senza chiave:
+         il primo lo chiama il sito appena dopo il tentativo di accesso,
+         il secondo è il link dentro l'email.
+         Non sono aperti a chiunque: entrambi funzionano solo se esiste
+         davvero una richiesta in attesa con il codice corrispondente. */
+      if (q.get("richiediApprovazione")) {
+        const auth = await getAccessToken(env);
+        const esito = await richiediApprovazione(
+          env,
+          auth,
+          { leggiDoc, fval },
+          q.get("richiediApprovazione"),
+          q.get("device")
+        );
+        return json(esito, esito.ok ? 200 : 400);
+      }
+      if (q.get("confermaAccesso")) {
+        const auth = await getAccessToken(env);
+        const esito = await confermaDispositivo(
+          auth,
+          { runQuery, patchDoc },
+          q.get("confermaAccesso"),
+          q.get("u")
+        );
         return json(esito, esito.ok ? 200 : 404);
       }
 
@@ -490,8 +518,13 @@ async function getAccessToken(env) {
   return { token: data.access_token, projectId: sa.project_id };
 }
 
-async function runQuery(auth, structuredQuery) {
-  const url = `https://firestore.googleapis.com/v1/projects/${auth.projectId}/databases/(default)/documents:runQuery`;
+/* `dentro` limita la ricerca a una sottoraccolta precisa
+   (es. "users/abc"): serve per cercare fra i dispositivi di UN utente
+   senza dover cercare fra quelli di tutti, cosa che Firestore
+   consentirebbe solo creando un indice apposta. */
+async function runQuery(auth, structuredQuery, dentro = "") {
+  const base = `https://firestore.googleapis.com/v1/projects/${auth.projectId}/databases/(default)/documents`;
+  const url = `${base}${dentro ? "/" + dentro : ""}:runQuery`;
   const res = await fetch(url, {
     method: "POST",
     headers: { authorization: `Bearer ${auth.token}`, "content-type": "application/json" },
@@ -501,7 +534,14 @@ async function runQuery(auth, structuredQuery) {
   const data = await res.json();
   return (data || [])
     .filter((r) => r.document)
-    .map((r) => ({ id: r.document.name.split("/").pop(), fields: r.document.fields || {} }));
+    .map((r) => ({
+      id: r.document.name.split("/").pop(),
+      // Percorso relativo (es. "users/abc/devices/xyz"): serve per
+      // aggiornare documenti che stanno dentro sottoraccolte, dove il
+      // solo id non basta a ritrovarli.
+      percorso: r.document.name.split("/documents/")[1] || "",
+      fields: r.document.fields || {},
+    }));
 }
 
 function patchMatch(auth, id, fields) {

@@ -31,6 +31,7 @@ const Pronostici = lazy(() => import("./pages/Pronostici"));
 const Classifica = lazy(() => import("./pages/Classifica"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Disiscriviti = lazy(() => import("./pages/Disiscriviti"));
+const Approva = lazy(() => import("./pages/Approva"));
 
 import ErrorBoundary from "./components/ErrorBoundary";
 import PushNudge from "./components/PushNudge";
@@ -113,6 +114,7 @@ function App() {
             <Route path="/about" element={<About />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/disiscriviti" element={<Disiscriviti />} />
+            <Route path="/approva" element={<Approva />} />
             {/* Catch-all 404 — DEVE essere l'ultima route */}
             <Route path="*" element={<NotFound />} />
           </Routes>
