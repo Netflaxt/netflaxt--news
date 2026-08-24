@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { setSEO, resetSEO } from "../utils/seo";
 import { Link, useNavigate } from "react-router-dom";
 import { auth, googleProvider, db } from "../firebase/firebase";
 import {
@@ -82,6 +83,16 @@ export default function Login() {
     const t = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(t);
   }, []);
+
+  useEffect(() => {
+    setSEO({
+      title: mode === "register" ? "Registrati" : "Accedi",
+      description:
+        "Entra in Netflaxt News: chat live, pronostici e quiz per i tifosi della Lazio.",
+      type: "website",
+    });
+    return () => resetSEO();
+  }, [mode]);
 
   /* Prepara il terreno per l'accesso con Google.
 

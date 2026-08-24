@@ -128,12 +128,14 @@ export default function Footer() {
             <h4 className="text-[11px] uppercase tracking-[0.28em] font-bold text-accent mb-5">
               Naviga
             </h4>
-            <ul className="space-y-3 text-sm">
+            {/* Voci più alte e ravvicinate: da telefono erano alte 20px,
+                sotto la soglia in cui il dito centra il link giusto. */}
+            <ul className="space-y-1 text-sm">
               {navLinks.map(([label, href]) => (
                 <li key={label}>
                   <Link
                     to={href}
-                    className="group inline-flex items-center gap-2.5 text-text-secondary hover:text-text-primary transition-colors duration-300"
+                    className="group inline-flex items-center gap-2.5 py-2 text-text-secondary hover:text-text-primary transition-colors duration-300"
                   >
                     <span className="w-0 h-px bg-accent group-hover:w-4 transition-all duration-300" />
                     <span>{label}</span>
@@ -149,16 +151,36 @@ export default function Footer() {
               Contatti
             </h4>
             <ul className="space-y-3 text-sm text-text-secondary">
-              <li className="flex items-center gap-2.5">
-                <svg className="w-4 h-4 text-text-muted shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-                </svg>
+              {/* Il contatto passa da Instagram, non più dall'email
+                  personale: un indirizzo scritto in chiaro su una pagina
+                  pubblica viene raccolto dai programmi che setacciano il
+                  web e finisce nelle liste dello spam. */}
+              <li>
                 <a
-                  href="mailto:cretellamattia36@gmail.com"
-                  aria-label="Scrivimi a cretellamattia36@gmail.com"
-                  className="break-all hover:text-accent transition-colors duration-300"
+                  href="https://www.instagram.com/netflaxt"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Scrivimi su Instagram, profilo @netflaxt"
+                  className="group inline-flex items-center gap-3 px-4 py-2.5 rounded-lg border border-border bg-bg-surface/50 text-text-secondary hover:text-accent hover:border-accent/50 hover:bg-accent/5 hover:-translate-y-0.5 transition-all duration-300"
                 >
-                  cretellamattia36@gmail.com
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-4 h-4 shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <rect x="3" y="3" width="18" height="18" rx="5" ry="5" />
+                    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+                    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+                  </svg>
+                  <span className="font-semibold">Scrivimi su Instagram</span>
+                  <span className="text-text-muted group-hover:text-accent/70 transition-colors duration-300">
+                    @netflaxt
+                  </span>
                 </a>
               </li>
               <li className="flex items-center gap-2.5">

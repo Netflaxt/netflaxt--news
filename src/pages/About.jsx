@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { setSEO, resetSEO } from "../utils/seo";
 
 export default function About() {
   const [mounted, setMounted] = useState(false);
@@ -7,6 +8,19 @@ export default function About() {
   useEffect(() => {
     const t = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(t);
+  }, []);
+
+  /* Senza, questa pagina si presenta a Google col titolo generico del
+     sito, identico a tutte le altre: i motori di ricerca la considerano
+     un doppione e la mostrano molto più raramente. */
+  useEffect(() => {
+    setSEO({
+      title: "Chi sono",
+      description:
+        "Netflaxt News è un fan site indipendente sulla SS Lazio, nato dalla passione di un tifoso: news, pronostici e chat live per i biancocelesti.",
+      type: "website",
+    });
+    return () => resetSEO();
   }, []);
 
   return (
@@ -147,8 +161,16 @@ export default function About() {
 
             <p>
               <span className="text-text-primary font-semibold">Il progetto cresce giorno dopo giorno.</span>{" "}
-              Se hai idee, consigli o vuoi collaborare, scrivimi tranquillamente. Ogni aiuto
-              da parte di un altro laziale vale tanto.
+              Se hai idee, consigli o vuoi collaborare,{" "}
+              <a
+                href="https://www.instagram.com/netflaxt"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent hover:underline font-semibold"
+              >
+                scrivimi su Instagram
+              </a>{" "}
+              tranquillamente. Ogni aiuto da parte di un altro laziale vale tanto.
             </p>
           </div>
         </div>

@@ -92,7 +92,16 @@ export default function Disiscriviti() {
             <p className="mt-4 text-text-secondary text-sm">{motivo}.</p>
             <p className="mt-2 text-text-muted text-xs">
               Può darsi che l'iscrizione fosse già stata annullata. Se il
-              problema resta, scrivimi e la tolgo a mano.
+              problema resta,{" "}
+              <a
+                href="https://www.instagram.com/netflaxt"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent hover:underline"
+              >
+                scrivimi su Instagram
+              </a>{" "}
+              e la tolgo a mano.
             </p>
           </>
         ) : (

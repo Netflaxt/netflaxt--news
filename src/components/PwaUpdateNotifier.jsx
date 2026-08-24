@@ -17,7 +17,24 @@ import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { registerSW } from "virtual:pwa-register";
 
-const POLL_INTERVAL = 12 * 1000; // 12 secondi
+/* Ogni quanto chiedere al server se è uscita una versione nuova.
+
+   Era 12 secondi: circa 300 richieste all'ora per ogni visitatore con
+   la pagina aperta, per una cosa che cambia una volta ogni tanto —
+   traffico sprecato e batteria consumata sui telefoni.
+   Cinque minuti bastano, anche perché il controllo riparte comunque
+   quando si torna sulla scheda, si cambia pagina o rientra la rete:
+   in pratica l'aggiornamento si nota subito lo stesso. */
+const POLL_INTERVAL = 5 * 60 * 1000;
+
+/* Distanza minima fra due controlli consecutivi.
+
+   Il controllo all'apertura e quello al cambio pagina partivano
+   insieme: ogni caricamento chiedeva due volte la stessa cosa nello
+   stesso millisecondo (visto nel traffico di rete il 24/08/2026). */
+const MIN_TRA_CONTROLLI = 20 * 1000;
+let ultimoControllo = 0;
+
 const PROGRESS_DURATION_MS = 1400;
 
 // Versione con cui è stato compilato QUESTO codice (iniettata da Vite)
@@ -37,10 +54,15 @@ function isStandalonePWA() {
   }
 }
 
-/** Legge la versione attuale dal server, sempre fresca (no cache). */
+/** Legge la versione attuale dal server, sempre fresca (no cache).
+    Restituisce null se è stata appena letta: chi chiama la interpreta
+    come "nessuna novità", che è esattamente il caso. */
 async function fetchServerVersion() {
+  const ora = Date.now();
+  if (ora - ultimoControllo < MIN_TRA_CONTROLLI) return null;
+  ultimoControllo = ora;
   try {
-    const res = await fetch(`/version.json?t=${Date.now()}`, {
+    const res = await fetch(`/version.json?t=${ora}`, {
       cache: "no-store",
     });
     if (!res.ok) return null;

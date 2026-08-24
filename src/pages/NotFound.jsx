@@ -7,6 +7,7 @@
        <Route path="*" element={<NotFound />} />
    ───────────────────────────────────────────────────────────── */
 import React, { useEffect, useState } from "react";
+import { setSEO, resetSEO } from "../utils/seo";
 import { Link, useLocation } from "react-router-dom";
 
 export default function NotFound({ variant = "page" }) {
@@ -19,6 +20,18 @@ export default function NotFound({ variant = "page" }) {
     const t = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(t);
   }, []);
+
+  /* Una pagina inesistente non deve presentarsi ai motori di ricerca
+     con il titolo del sito, altrimenti finisce indicizzata come se
+     fosse una pagina vera. */
+  useEffect(() => {
+    setSEO({
+      title: isArticle ? "Articolo non disponibile" : "Pagina non trovata",
+      description: "La pagina che cercavi non esiste o è stata spostata.",
+      type: "website",
+    });
+    return () => resetSEO();
+  }, [isArticle]);
 
   return (
     <main className="relative min-h-screen bg-bg-base text-text-primary flex items-center justify-center px-6 overflow-hidden">

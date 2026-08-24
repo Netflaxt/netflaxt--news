@@ -127,8 +127,16 @@ body {
   min-height: 100vh;
   background-image: var(--app-bg-image);
   background-attachment: fixed;
-  /* Switch tema istantaneo (era 0.4s, percepibile come "lag"). */
-  transition: background-color 0.15s ease, color 0.15s ease;
+  /* ⚠️ NON rimettere qui una transition su background-color/color.
+
+     Questi due colori arrivano da variabili che cambiano quando si
+     passa da tema scuro a tema chiaro. Con una transizione attiva il
+     browser continua a mostrare il colore vecchio: il resto della
+     pagina cambia, lo sfondo di fondo no, e torna giusto solo
+     ricaricando (verificato il 24/08/2026 — con `transition: none` il
+     cambio avviene subito e correttamente).
+     Senza transizione il passaggio è istantaneo, che è anche l'effetto
+     voluto: era già stato ridotto da 0,4s perché sembrava un ritardo. */
 }
 
 h1, h2, h3, h4, h5, h6 {

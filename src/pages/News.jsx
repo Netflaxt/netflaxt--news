@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { setSEO, resetSEO } from "../utils/seo";
 import { Link } from "react-router-dom";
 import { db } from "../firebase/firebase";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
@@ -17,6 +18,19 @@ const DATE_RANGES = [
 ];
 
 export default function News() {
+  /* È la pagina che i motori di ricerca associano alle notizie del
+     sito: senza un titolo e una descrizione propri si presenta come un
+     doppione della home e viene mostrata molto più raramente. */
+  useEffect(() => {
+    setSEO({
+      title: "Tutte le news sulla Lazio",
+      description:
+        "Notizie, calciomercato e analisi sulla SS Lazio aggiornate in tempo reale. Il notiziario biancoceleste di Netflaxt News.",
+      type: "website",
+    });
+    return () => resetSEO();
+  }, []);
+
   const categories = ["Tutto", "Calciomercato", "Serie A", "Esclusive Netflaxt", "Breaking News"];
 
   // Filtri base + avanzati
