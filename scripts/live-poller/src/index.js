@@ -115,11 +115,18 @@ export default {
         });
         const battito = await leggiDoc(auth, "sistema/livePoller");
         const ultima = battito?.fields?.ultimaEsecuzione?.timestampValue;
+        const oggiStr = new Date().toISOString().slice(0, 10);
+        const apiData = battito?.fields?.apiData?.stringValue;
+        const apiOggi = Number(battito?.fields?.apiOggi?.integerValue ?? 0);
         return json({
           ultimoGiroDelServizio: ultima || "mai",
           minutiDallUltimoGiro: ultima
             ? Math.round((Date.now() - new Date(ultima).getTime()) / 60000)
             : null,
+          // Quante richieste sono state fatte al servizio delle partite:
+          // il piano gratuito ne consente 100 al giorno.
+          chiamateApiOggi: apiData === oggiStr ? apiOggi : 0,
+          limiteGiornaliero: 100,
           messaggi: messaggi.map((m) => ({
             titolo: fval(m.fields.title),
             stato: fval(m.fields.status),
@@ -271,11 +278,50 @@ async function poll(env, authCondiviso) {
   // Il piano free ha 100 richieste/giorno, quindi ogni chiamata conta.
   if (fval(m.fields.scored) === true) return { skipped: "già finalizzata" };
 
-  // 2) Dati live da API-Football. Usiamo ?live=all (accessibile sul piano
-  //    GRATIS) e filtriamo la Lazio: ?season=2026 sul free è bloccato.
-  const { partita: fx, attendibile } = await fetchLiveLazio(env);
   const curLive = fval(m.fields.live) === true;
   const curStatus = fval(m.fields.liveStatus);
+  const dallInizio = Date.now() - new Date(fval(m.fields.kickoff) || 0).getTime();
+
+  /* ─── RISPARMIO CHIAMATE ───────────────────────────────────────
+     Il piano gratuito di API-Football dà 100 richieste al giorno, e
+     una partita ne consumava fino a 98: margine zero. Bastava un
+     imprevisto per restare a secco a metà gara — successo il
+     24/08/2026 durante Bologna-Lazio.
+     I tre controlli qui sotto vengono PRIMA della chiamata, non dopo:
+     una richiesta risparmiata è una richiesta che resta disponibile. */
+
+  // 1. Prima del fischio d'inizio la partita non può essere in diretta.
+  //    Erano cinque chiamate buttate a ogni gara.
+  if (dallInizio < 0) {
+    return { skipped: "non ancora iniziata", fraQuantoMinuti: Math.round(-dallInizio / 60000) };
+  }
+
+  // 2. Oltre il tempo massimo si chiude senza chiedere nulla a nessuno:
+  //    a quel punto la partita è finita di sicuro.
+  if (curLive && curStatus !== "FT" && dallInizio >= MAX_DURATA_MS) {
+    return await finalize(
+      auth,
+      m.id,
+      fval(m.fields.liveHome) ?? 0,
+      fval(m.fields.liveAway) ?? 0,
+      readEvents(m.fields.events),
+      "tempo-scaduto",
+      { casa: fval(m.fields.homeTeam), ospite: fval(m.fields.awayTeam) }
+    );
+  }
+
+  // 3. Se siamo vicini al limite giornaliero ci si ferma da soli, invece
+  //    di sbatterci contro e ricevere risposte vuote scambiate per
+  //    "partita finita".
+  const consumo = await contaChiamataApi(auth);
+  if (consumo.oggi > LIMITE_API_GIORNO) {
+    console.error(`Limite API vicino: ${consumo.oggi} chiamate oggi. Diretta sospesa.`);
+    return { skipped: "limite giornaliero API raggiunto", chiamateOggi: consumo.oggi };
+  }
+
+  // 4) Dati live da API-Football. Usiamo ?live=all (accessibile sul piano
+  //    GRATIS) e filtriamo la Lazio: ?season=2026 sul free è bloccato.
+  const { partita: fx, attendibile } = await fetchLiveLazio(env);
 
   // 3) In gioco (la partita compare tra le live): aggiorna minuto/recupero/
   //    risultato E il tabellino (gol, marcatori, cartellini) in diretta.
@@ -367,7 +413,6 @@ async function poll(env, authCondiviso) {
      Senza queste due condizioni Bologna-Lazio è stata chiusa 0-1 mentre
      si giocava ancora, con i punti dei pronostici già assegnati sul
      parziale (24/08/2026). */
-  const dallInizio = Date.now() - new Date(fval(m.fields.kickoff) || 0).getTime();
   if (curLive && curStatus !== "FT" && attendibile && dallInizio >= MIN_DURATA_MS) {
     const home = fval(m.fields.liveHome) ?? 0;
     const away = fval(m.fields.liveAway) ?? 0;
@@ -377,19 +422,9 @@ async function poll(env, authCondiviso) {
       ospite: fval(m.fields.awayTeam),
     });
   }
-  /* Il rischio opposto: se la risposta resta non attendibile per ore, la
-     partita rimarrebbe segnata "in corso" per sempre. Passato il tempo
-     in cui QUALSIASI partita è certamente terminata, la chiudiamo con
-     l'ultimo punteggio conosciuto: è meglio di una diretta che non
-     finisce mai. */
-  if (curLive && curStatus !== "FT" && dallInizio >= MAX_DURATA_MS) {
-    const home = fval(m.fields.liveHome) ?? 0;
-    const away = fval(m.fields.liveAway) ?? 0;
-    return await finalize(auth, m.id, home, away, readEvents(m.fields.events), "tempo-scaduto", {
-      casa: fval(m.fields.homeTeam),
-      ospite: fval(m.fields.awayTeam),
-    });
-  }
+  /* La chiusura per tempo scaduto sta più in alto, prima della chiamata
+     all'API: a quel punto la partita è finita di sicuro e non serve
+     chiedere nulla. */
   if (curLive && !attendibile) {
     return { skipped: "risposta non attendibile: la partita resta aperta", curLive };
   }
@@ -472,6 +507,32 @@ async function scorePredictions(auth, matchId, home, away) {
    giocando.
    Una risposta non attendibile va trattata come "non lo so", mai come
    "è finita". */
+/* Quante richieste ad API-Football sono state fatte oggi.
+
+   Stasera il problema non è stato solo restare senza richieste: è stato
+   non ACCORGERSENE. Il consumo era una stima sulla carta, non un numero
+   leggibile. Ora si conta davvero, e si vede da `?diag=coda`.
+   Il conteggio riparte da solo a ogni cambio di data. */
+const LIMITE_API_GIORNO = 90; // sotto le 100 vere, per lasciare margine
+
+async function contaChiamataApi(auth) {
+  const oggiStr = new Date().toISOString().slice(0, 10);
+  let oggi = 1;
+  try {
+    const d = await leggiDoc(auth, "sistema/livePoller");
+    const dataSalvata = d?.fields?.apiData?.stringValue;
+    const contatore = Number(d?.fields?.apiOggi?.integerValue ?? 0);
+    oggi = dataSalvata === oggiStr ? contatore + 1 : 1;
+  } catch {
+    /* se non si riesce a leggere si prosegue: meglio una diretta
+       imprecisa nel conteggio che una diretta ferma */
+  }
+  try {
+    await patchDoc(auth, "sistema/livePoller", { apiData: oggiStr, apiOggi: oggi });
+  } catch {}
+  return { oggi };
+}
+
 async function fetchLiveLazio(env) {
   const teamId = env.TEAM_ID || "487";
   const res = await fetch("https://v3.football.api-sports.io/fixtures?live=all", {
