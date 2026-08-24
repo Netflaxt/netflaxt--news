@@ -40,7 +40,7 @@ export default {
       if (q.get("disiscrivi")) {
         const auth = await getAccessToken(env);
         const esito = await disiscrivi(auth, { runQuery, eliminaDoc }, q.get("disiscrivi"));
-        return json(esito, esito.ok ? 200 : 404);
+        return json(esito, esito.ok ? 200 : 404, req);
       }
 
       /* Accesso da un dispositivo nuovo. Anche questi due senza chiave:
@@ -57,7 +57,7 @@ export default {
           q.get("richiediApprovazione"),
           q.get("device")
         );
-        return json(esito, esito.ok ? 200 : 400);
+        return json(esito, esito.ok ? 200 : 400, req);
       }
       if (q.get("confermaAccesso")) {
         const auth = await getAccessToken(env);
@@ -67,7 +67,7 @@ export default {
           q.get("confermaAccesso"),
           q.get("u")
         );
-        return json(esito, esito.ok ? 200 : 404);
+        return json(esito, esito.ok ? 200 : 404, req);
       }
 
       const chiave = env.ADMIN_KEY;
@@ -670,9 +670,31 @@ function b64url(bytes) {
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function json(obj, status = 200) {
+/* Il sito e questo servizio vivono su indirizzi diversi. Per sicurezza i
+   browser bloccano le chiamate fra indirizzi diversi, a meno che la
+   risposta non dichiari di accettarle: senza questa intestazione, dal
+   sito la richiesta fallisce sempre e l'utente vede solo un generico
+   "non è stato possibile contattare il servizio" (successo il
+   24/08/2026 con la conferma degli accessi).
+   Da riga di comando il problema non si vede: quel controllo lo fa
+   soltanto il browser. */
+const SITI_AMMESSI = ["https://netflaxt.it", "https://www.netflaxt.it"];
+
+function intestazioniCors(req) {
+  const origine = req?.headers?.get("origin") || "";
+  return {
+    "content-type": "application/json",
+    "access-control-allow-origin": SITI_AMMESSI.includes(origine)
+      ? origine
+      : SITI_AMMESSI[0],
+    "access-control-allow-methods": "GET, OPTIONS",
+    "access-control-max-age": "86400",
+  };
+}
+
+function json(obj, status = 200, req = null) {
   return new Response(JSON.stringify(obj, null, 2), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: intestazioniCors(req),
   });
 }
