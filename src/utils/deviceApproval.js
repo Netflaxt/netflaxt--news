@@ -86,17 +86,35 @@ export async function verificaDispositivo(user) {
   return { esito: "attesa", token };
 }
 
-/** Chiede al servizio di spedire (o rispedire) l'email di conferma */
+/** Chiede al servizio di spedire (o rispedire) l'email di conferma.
+
+   Riprova un paio di volte prima di arrendersi. Serve perché la
+   richiesta viene creata un istante prima: il servizio la legge dal
+   database e potrebbe non vederla ancora, dato che la scrittura impiega
+   una frazione di secondo a diventare visibile a tutti.
+   Senza i tentativi, la prima email non partiva mai e bisognava sempre
+   premere "Rimanda" (problema riscontrato il 24/08/2026). */
 export async function inviaEmailApprovazione(uid, deviceId = getDeviceId()) {
-  try {
-    const res = await fetch(
-      `${SERVIZIO}/?richiediApprovazione=${encodeURIComponent(uid)}&device=${encodeURIComponent(deviceId)}`
-    );
-    const dati = await res.json().catch(() => ({}));
-    return !!dati.ok;
-  } catch {
-    return false;
+  const attese = [0, 1200, 2500]; // subito, poi due tentativi più distanziati
+  for (const attesa of attese) {
+    if (attesa) await new Promise((r) => setTimeout(r, attesa));
+    try {
+      const res = await fetch(
+        `${SERVIZIO}/?richiediApprovazione=${encodeURIComponent(uid)}&device=${encodeURIComponent(deviceId)}`
+      );
+      const dati = await res.json().catch(() => ({}));
+      if (dati.ok) return true;
+      // "dispositivo sconosciuto" o "codice mancante" = la richiesta non
+      // è ancora visibile: ha senso riprovare. Altri motivi no.
+      const daRiprovare =
+        typeof dati.motivo === "string" &&
+        (dati.motivo.includes("sconosciuto") || dati.motivo.includes("codice"));
+      if (!daRiprovare) return false;
+    } catch {
+      /* rete instabile: il tentativo successivo può andare a buon fine */
+    }
   }
+  return false;
 }
 
 /** Il dispositivo è stato confermato nel frattempo? (per lo sblocco automatico)

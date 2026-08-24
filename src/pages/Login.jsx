@@ -258,7 +258,31 @@ export default function Login() {
   const handleGoogle = async () => {
     setError("");
     setLoading(true);
+
+    /* Se la finestra di Google non torna indietro (chiusa a metà, rete
+       che cade), il pulsante resterebbe a caricare all'infinito senza
+       spiegazioni. Dopo un minuto lo sblocchiamo dicendo cosa fare. */
+    const sbloccoDiSicurezza = setTimeout(() => {
+      setLoading(false);
+      setError(
+        "La finestra di Google non ha risposto. Chiudila e riprova, oppure accedi con email e password."
+      );
+    }, 60000);
+
     try {
+      /* Appena la pagina si apre, il "custode" che fa funzionare il sito
+         offline si sta ancora avviando. Se in quel momento parte la
+         finestra di Google, la risposta rischia di perdersi per strada:
+         la finestra si apre, ma il sito resta a caricare all'infinito.
+         Bisognava ricaricare la pagina e riprovare — succedeva sempre al
+         primo tentativo (riscontrato il 24/08/2026).
+         Qui aspettiamo che sia pronto: sono frazioni di secondo. */
+      if ("serviceWorker" in navigator) {
+        await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise((r) => setTimeout(r, 3000)), // non restare mai appesi
+        ]).catch(() => {});
+      }
       const cred = await signInWithPopup(auth, googleProvider);
       const userRef = doc(db, "users", cred.user.uid);
       const userSnap = await getDoc(userRef);
@@ -339,6 +363,7 @@ export default function Login() {
     } catch (err) {
       setError(mapFirebaseError(err));
     } finally {
+      clearTimeout(sbloccoDiSicurezza);
       setLoading(false);
     }
   };
