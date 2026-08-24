@@ -61,6 +61,21 @@ export default function Login() {
     return () => cancelAnimationFrame(t);
   }, []);
 
+  /* Prepara il terreno per l'accesso con Google.
+
+     Appena la pagina si apre, il "custode" che fa funzionare il sito
+     offline si sta ancora avviando: se la finestra di Google parte
+     proprio in quell'istante, la risposta rischia di perdersi e il sito
+     resta a caricare all'infinito (capitava sempre al primo tentativo).
+
+     L'attesa va fatta QUI, mentre l'utente legge la pagina — non al
+     momento del click: i browser aprono una finestra solo se il click è
+     appena avvenuto, e un'attesa in mezzo la farebbe chiudere subito. */
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.ready.catch(() => {});
+  }, []);
+
   // ✨ Gestione ritorno dal link di conferma email (Google flow).
   // Quando l'utente clicca il link nell'email arriva qui con
   // ?emailConfirmed=true&email=...
@@ -270,19 +285,13 @@ export default function Login() {
     }, 60000);
 
     try {
-      /* Appena la pagina si apre, il "custode" che fa funzionare il sito
-         offline si sta ancora avviando. Se in quel momento parte la
-         finestra di Google, la risposta rischia di perdersi per strada:
-         la finestra si apre, ma il sito resta a caricare all'infinito.
-         Bisognava ricaricare la pagina e riprovare — succedeva sempre al
-         primo tentativo (riscontrato il 24/08/2026).
-         Qui aspettiamo che sia pronto: sono frazioni di secondo. */
-      if ("serviceWorker" in navigator) {
-        await Promise.race([
-          navigator.serviceWorker.ready,
-          new Promise((r) => setTimeout(r, 3000)), // non restare mai appesi
-        ]).catch(() => {});
-      }
+      /* ⚠️ NON mettere attese prima di questa riga.
+         I browser aprono una finestra solo se il click dell'utente è
+         appena avvenuto: qualsiasi attesa qui in mezzo fa "scadere" il
+         click e la finestra viene chiusa subito dopo essersi aperta
+         (provato il 24/08/2026: così l'accesso smetteva del tutto di
+         funzionare). La preparazione va fatta al caricamento della
+         pagina — vedi l'effetto più in alto. */
       const cred = await signInWithPopup(auth, googleProvider);
       const userRef = doc(db, "users", cred.user.uid);
       const userSnap = await getDoc(userRef);
