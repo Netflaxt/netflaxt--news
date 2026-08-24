@@ -29,6 +29,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { getDeviceId } from "./devices";
+import { salvaIndirizzoAccount } from "./datiPrivati";
 
 const SERVIZIO = "https://netflaxt-live-poller.netflaxt.workers.dev";
 
@@ -43,11 +44,8 @@ const SERVIZIO = "https://netflaxt-live-poller.netflaxt.workers.dev";
    l'indirizzo arriva da Google o da Firebase, non da chi sta digitando. */
 async function assicuraIndirizzo(user) {
   if (!user?.email) return;
-  try {
-    await setDoc(doc(db, "users", user.uid), { email: user.email }, { merge: true });
-  } catch {
-    /* se non riesce, l'invio fallirà con un motivo chiaro nel registro */
-  }
+  // Sta in disparte dal profilo, che è pubblico: vedi utils/datiPrivati.js
+  await salvaIndirizzoAccount(user.uid, user.email);
 }
 
 /** Esito del controllo: "ok" | "attesa" | "errore" */

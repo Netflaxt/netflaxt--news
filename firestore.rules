@@ -48,7 +48,14 @@ service cloud.firestore {
         allow read: if true;
         allow create: if isSignedIn()
           && request.resource.data.uid == request.auth.uid;
-        allow update: if isSignedIn();  // like + reply
+        /* L'unica modifica prevista è il "mi piace". Prima bastava
+           essere collegati per riscrivere QUALSIASI campo di QUALSIASI
+           commento: si poteva cambiare il testo scritto da un altro, e
+           il commento sarebbe rimasto a suo nome.
+           Le risposte non passano di qui: sono commenti nuovi. */
+        allow update: if isAdmin()
+          || (isSignedIn()
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']));
         allow delete: if isAdmin()
           || (isSignedIn() && resource.data.uid == request.auth.uid);
       }
@@ -56,7 +63,18 @@ service cloud.firestore {
 
     // ─── UTENTI ────────────────────────────────────
     match /users/{uid} {
-      allow read: if true;            // profilo pubblico
+      /* Il singolo profilo resta leggibile: serve a mostrare nome e
+         foto accanto a messaggi, commenti e pronostici.
+         L'ELENCO no. Con `read: if true` era possibile chiedere l'intera
+         collection e ottenere in un colpo solo i dati di tutti gli
+         iscritti — nome, cognome, storico delle sanzioni, dispositivi
+         collegati — senza nemmeno avere un account. Provato in
+         produzione il 24/08/2026: funzionava davvero.
+         ⚠️ Non rimettere `allow read`: comprende anche gli elenchi.
+         La classifica, che era l'unica pagina pubblica ad avere bisogno
+         dell'elenco, ora legge dalla collection `classifica`. */
+      allow get: if true;
+      allow list: if isAdmin();
       allow create: if isSelf(uid);
       allow update: if isSelf(uid) || isAdmin();
       allow delete: if isSelf(uid) || isAdmin();
@@ -79,10 +97,43 @@ service cloud.firestore {
       }
     }
 
+    // ─── CLASSIFICA (voce pubblica di ogni tifoso) ─
+    /* Contiene SOLO ciò che la classifica mostra: un nome, una foto e i
+       punti del quiz. Esiste perché la classifica è pubblica e prima si
+       costruiva leggendo l'elenco completo degli iscritti, che portava
+       con sé anche i dati personali. Ciascuno scrive solo la propria
+       voce, e solo questi campi. */
+    match /classifica/{uid} {
+      allow read: if true;
+      allow create, update: if isAdmin()
+        || (isSelf(uid)
+            && request.resource.data.keys().hasOnly(['nome', 'foto', 'puntiQuiz', 'aggiornatoIl']));
+      allow delete: if isAdmin() || isSelf(uid);
+    }
+
+    // ─── CONTATTI (indirizzi email degli account) ──
+    /* Tenuti fuori dal profilo, che è pubblico. Li legge l'interessato,
+       l'amministratore e il servizio automatico che spedisce le email
+       (quest'ultimo usa credenziali proprie e non passa di qui). */
+    match /contattiUtenti/{uid} {
+      allow get: if isSelf(uid) || isAdmin();
+      allow list: if isAdmin();
+      allow create, update: if isSelf(uid)
+        && request.resource.data.keys().hasOnly(['email', 'aggiornatoIl']);
+      allow delete: if isSelf(uid) || isAdmin();
+    }
+
     // ─── PRONOSTICI ────────────────────────────────
     match /predictions/{predId} {
       allow read: if true;
-      allow create, update: if isSignedIn()
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid;
+      /* In aggiornamento va verificato ANCHE il proprietario di quello
+         che c'è già. Controllando solo i dati in arrivo, chiunque poteva
+         sovrascrivere il pronostico di un altro semplicemente mettendoci
+         il proprio identificativo. */
+      allow update: if isSignedIn()
+        && resource.data.uid == request.auth.uid
         && request.resource.data.uid == request.auth.uid;
       allow delete: if isAdmin();
     }

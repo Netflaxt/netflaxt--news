@@ -69,7 +69,13 @@ async function provaAInviare(env, auth, helpers, uid, deviceId) {
 async function spedisci(env, auth, helpers, uid, dispositivo, token, tentativi) {
   const { leggiDoc, fval } = helpers;
   const utente = await leggiDoc(auth, `users/${uid}`);
-  const email = fval(utente?.fields?.email);
+
+  /* L'indirizzo sta in disparte perché il profilo è pubblico e chiunque
+     avrebbe potuto leggerlo. Il ripiego sul profilo serve per gli
+     account che non hanno ancora fatto un accesso da quando è cambiato:
+     si spostano da soli al primo collegamento. */
+  const contatto = await leggiDoc(auth, `contattiUtenti/${uid}`);
+  const email = fval(contatto?.fields?.email) || fval(utente?.fields?.email);
   if (!email) return { ok: false, motivo: "indirizzo non disponibile", tentativi };
 
   const descrizione = fval(dispositivo.fields.label) || "Dispositivo sconosciuto";

@@ -12,12 +12,15 @@
      }
 
    La collection `users/{uid}` è già usata dal moderationService;
-   questo hook aggiunge i campi base (email, displayName, photoURL,
+   questo hook aggiunge i campi base (displayName, photoURL,
    createdAt, lastSeenAt) necessari per la pagina Admin → Utenti.
+   L'indirizzo email sta invece in disparte, vedi utils/datiPrivati.js.
    ───────────────────────────────────────────────────────────── */
 import { useEffect, useRef } from "react";
 import { db } from "../firebase/firebase";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { salvaIndirizzoAccount } from "../utils/datiPrivati";
+import { sincronizzaVoceClassifica } from "../utils/classifica";
 
 export default function useEnsureUserDoc(user) {
   const lastSyncedUid = useRef(null);
@@ -35,11 +38,12 @@ export default function useEnsureUserDoc(user) {
 
         if (!snap.exists()) {
           // Primo accesso: crea il doc CON la foto iniziale (es. Google)
+          // L'indirizzo email NON va qui: questo documento è pubblico.
+          // Vedi salvaIndirizzoAccount più sotto.
           await setDoc(
             userRef,
             {
               uid: user.uid,
-              email: user.email || null,
               displayName:
                 user.displayName ||
                 (user.email ? user.email.split("@")[0] : "Utente"),
@@ -60,12 +64,18 @@ export default function useEnsureUserDoc(user) {
             userRef,
             {
               uid: user.uid,
-              email: user.email || null,
               lastSeenAt: serverTimestamp(),
             },
             { merge: true }
           );
         }
+
+        /* L'indirizzo va al riparo dalla lettura pubblica, e la voce di
+           classifica si riallinea. Entrambe le cose ripuliscono da sole
+           i profili creati prima di questa modifica, senza migrazioni
+           da fare a mano. */
+        await salvaIndirizzoAccount(user.uid, user.email);
+        await sincronizzaVoceClassifica(user.uid);
       } catch (e) {
         console.warn("useEnsureUserDoc error:", e);
       }

@@ -27,6 +27,7 @@ import {
   arrayUnion,
 } from "firebase/firestore";
 import { QUIZ_QUESTIONS } from "./quizQuestions";
+import { sincronizzaVoceClassifica } from "./classifica";
 
 export const QUIZ_DAILY_COUNT = 5;
 // Punto per ogni risposta corretta (max 5 al giorno).
@@ -164,19 +165,12 @@ export async function submitTodayQuiz(uid, answers) {
   }
   await setDoc(doc(db, "users", uid), userUpdate, { merge: true });
 
-  return { score, awardedPoints };
-}
+  /* Riporta i punti nella voce pubblica di classifica. Senza, i punti
+     appena guadagnati resterebbero invisibili agli altri fino al
+     prossimo accesso (la classifica non legge più il profilo). */
+  if (awardedPoints > 0) await sincronizzaVoceClassifica(uid);
 
-/* Recupera quizPoints totali di tutti gli utenti (per leaderboard generale).
-   Restituisce mappa uid -> quizPoints. */
-export async function getAllQuizPoints() {
-  const snap = await getDocs(collection(db, "users"));
-  const map = {};
-  snap.docs.forEach((d) => {
-    const p = d.data()?.quizPoints;
-    if (p && p > 0) map[d.id] = p;
-  });
-  return map;
+  return { score, awardedPoints };
 }
 
 /* Streak di giorni consecutivi di partecipazione al quiz (best-effort,

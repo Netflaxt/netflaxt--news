@@ -57,7 +57,28 @@ export default function AdminUsersTab({ onToast }) {
         }
       }
     );
-    return () => unsub();
+    /* Gli indirizzi email non stanno più nel profilo (era pubblico:
+       chiunque poteva scaricarseli). Vivono in una collection che solo
+       l'amministratore può leggere, e qui vengono riaccostati al
+       rispettivo profilo per la ricerca e l'elenco. */
+    const unsubContatti = onSnapshot(
+      collection(db, "contattiUtenti"),
+      (snap) => {
+        const perUid = {};
+        snap.docs.forEach((d) => {
+          perUid[d.id] = d.data()?.email || null;
+        });
+        setUsers((elenco) =>
+          elenco.map((u) => (perUid[u.id] ? { ...u, email: perUid[u.id] } : u))
+        );
+      },
+      (e) => console.warn("Contatti utenti non leggibili:", e?.message)
+    );
+
+    return () => {
+      unsub();
+      unsubContatti();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

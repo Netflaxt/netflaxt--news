@@ -225,10 +225,9 @@ export default function Classifica() {
         const meta = userMeta[uid] || {};
         merged.push({
           uid,
-          displayName:
-            meta.username ||
-            meta.firstName ||
-            (meta.email ? meta.email.split("@")[0] : "Tifoso"),
+          // Niente ripiego sull'indirizzo email: mostrava in pubblico
+          // un pezzo dell'indirizzo di chi non aveva scelto un nome.
+          displayName: meta.username || "Tifoso",
           photoURL: meta.photoURL || null,
           quizPoints: qp,
           predictionPoints: 0,
@@ -262,14 +261,23 @@ export default function Classifica() {
       }
     );
 
+    /* Si legge dalla collection `classifica`, non dall'elenco degli
+       iscritti. Quest'ultimo, per far funzionare una pagina pubblica,
+       avrebbe dovuto restare leggibile da chiunque — e insieme ai punti
+       usciva tutto il resto: indirizzi email, nome e cognome, storico
+       delle sanzioni. Qui c'è soltanto nome, foto e punti del quiz.
+       Vedi utils/classifica.js. */
     const unsubUsers = onSnapshot(
-      collection(db, "users"),
+      collection(db, "classifica"),
       (snap) => {
-        usersRaw = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        usersRaw = snap.docs.map((d) => {
+          const v = d.data();
+          return { id: d.id, username: v.nome, photoURL: v.foto, quizPoints: v.puntiQuiz };
+        });
         recompute();
       },
       (e) => {
-        console.error("Errore listener users:", e);
+        console.error("Errore listener classifica:", e);
         setLoading(false);
       }
     );

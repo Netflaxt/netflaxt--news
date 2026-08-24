@@ -373,7 +373,6 @@ export default function Login() {
         await setDoc(
           userRef,
           {
-            email: cred.user.email,
             displayName: cred.user.displayName || "",
             photoURL: cred.user.photoURL || null,
             requireEmailConfirm: false,
@@ -394,7 +393,6 @@ export default function Login() {
       await setDoc(
         userRef,
         {
-          email: cred.user.email,
           displayName: cred.user.displayName || "",
           photoURL: cred.user.photoURL || null,
           requireEmailConfirm: true,
