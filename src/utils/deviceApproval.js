@@ -87,9 +87,28 @@ export async function verificaDispositivo(user) {
     return { esito: "attesa", token };
   }
 
-  // Primo dispositivo in assoluto → approvato d'ufficio (vedi nota 2)
+  /* Nessun dispositivo di FIDUCIA su questo account → si approva
+     d'ufficio quello in uso (vedi nota 2 in cima al file).
+
+     ⚠️ La condizione era "non esiste nessun dispositivo", ed era
+     sbagliata: il documento del dispositivo viene creato anche dalla
+     semplice registrazione all'accesso, quindi bastava un documento
+     qualsiasi — pure uno in attesa — per far saltare l'approvazione
+     automatica. Chi finiva senza NESSUN dispositivo approvato non
+     poteva più entrare: ogni accesso chiedeva una conferma che non
+     sbloccava niente. Successo davvero a un tifoso il 24/08/2026, che
+     aveva due dispositivi ed entrambi in attesa.
+
+     Non è un indebolimento: la conferma via email serve a proteggere un
+     account a cui si accede già da un dispositivo fidato. Se di fidati
+     non ce n'è nessuno, non c'è nulla da proteggere — chi entra adesso
+     sarebbe comunque il primo. */
   const tutti = await getDocs(collection(db, "users", user.uid, "devices"));
-  if (tutti.empty) {
+  const esisteUnFidato = tutti.docs.some((d) => {
+    const v = d.data() || {};
+    return v.revoked !== true && v.approved !== false;
+  });
+  if (!esisteUnFidato) {
     await setDoc(ref, { approved: true, approvedAt: serverTimestamp() }, { merge: true });
     return { esito: "ok" };
   }

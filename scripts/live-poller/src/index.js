@@ -99,6 +99,44 @@ export default {
           .filter(Boolean);
         return json({ ultimiInvii: righe.length ? righe : ["nessuna richiesta registrata"] });
       }
+      /* Stato di un singolo account: serve a capire perché una persona
+         non riesce a entrare, senza chiederle di fare prove alla cieca.
+         Mostra i dispositivi registrati e se sono approvati — è lì che
+         nascono i giri infiniti di conferma. */
+      if (q.get("diag") === "utente" && q.get("email")) {
+        const auth = await getAccessToken(env);
+        const cercati = await runQuery(auth, {
+          from: [{ collectionId: "contattiUtenti" }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: "email" },
+              op: "EQUAL",
+              value: { stringValue: q.get("email") },
+            },
+          },
+          limit: 1,
+        });
+        if (!cercati.length) return json({ trovato: false, motivo: "nessun account con questo indirizzo" });
+
+        const uid = cercati[0].id;
+        const profilo = await leggiDoc(auth, `users/${uid}`);
+        const dispositivi = await runQuery(auth, { from: [{ collectionId: "devices" }] }, `users/${uid}`);
+        return json({
+          trovato: true,
+          nome: fval(profilo?.fields?.displayName) || "(senza nome)",
+          iscrittoIl: (profilo?.fields?.createdAt?.timestampValue || "").slice(0, 16).replace("T", " "),
+          quantiDispositivi: dispositivi.length,
+          dispositivi: dispositivi.map((d) => ({
+            descrizione: fval(d.fields.label) || "?",
+            approvato: fval(d.fields.approved),
+            revocato: fval(d.fields.revoked) === true,
+            haCodiceInAttesa: !!fval(d.fields.approvalToken),
+            richiestoIl: (d.fields.richiestoIl?.timestampValue || "").slice(0, 16).replace("T", " "),
+            vistoIl: (d.fields.lastSeen?.timestampValue || "").slice(0, 16).replace("T", " "),
+          })),
+        });
+      }
+
       if (q.get("diag") === "push") {
         const auth = await getAccessToken(env);
         return json(await diagnosticaPush(auth, { runQuery, fval }));

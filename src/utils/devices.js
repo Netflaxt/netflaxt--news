@@ -33,19 +33,52 @@ import {
 
 const DEVICE_ID_KEY = "netflaxt:deviceId";
 
-/* ─── Device ID stabile ─────────────────────────────────────── */
+/* ─── Device ID stabile ───────────────────────────────────────
+   ⚠️ DEVE restituire SEMPRE lo stesso valore nella stessa sessione.
+
+   Prima, quando la memoria del browser non era disponibile, generava un
+   identificativo NUOVO a ogni chiamata. E viene chiamato più volte per
+   sessione (registrazione dispositivo, controllo accesso, notifiche):
+   ogni chiamata vedeva un dispositivo diverso, quindi "mai visto prima",
+   quindi chiedeva una conferma via email che non sbloccava nulla —
+   perché la conferma arrivava per un identificativo già scaduto.
+   È il giro infinito segnalato da due tifosi il 24/08/2026, uno dei
+   quali risultava con lo stesso telefono registrato due volte.
+
+   Tre livelli, dal più duraturo al meno: memoria permanente, memoria
+   della scheda, memoria del programma. L'ultimo non sopravvive alla
+   chiusura della pagina, ma almeno resta coerente mentre si naviga. */
+let idDiQuestaSessione = null;
+
 export function getDeviceId() {
+  if (idDiQuestaSessione) return idDiQuestaSessione;
+
   try {
     let id = localStorage.getItem(DEVICE_ID_KEY);
     if (!id) {
       id = generateId();
       localStorage.setItem(DEVICE_ID_KEY, id);
     }
+    idDiQuestaSessione = id;
     return id;
   } catch {
-    // localStorage non disponibile (es. modalità incognito strict)
-    return generateId();
+    /* memoria permanente non disponibile: si prova quella della scheda */
   }
+
+  try {
+    let id = sessionStorage.getItem(DEVICE_ID_KEY);
+    if (!id) {
+      id = generateId();
+      sessionStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    idDiQuestaSessione = id;
+    return id;
+  } catch {
+    /* nemmeno quella: resta la memoria del programma */
+  }
+
+  idDiQuestaSessione = generateId();
+  return idDiQuestaSessione;
 }
 
 function generateId() {
