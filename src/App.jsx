@@ -32,6 +32,7 @@ const Classifica = lazy(() => import("./pages/Classifica"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Disiscriviti = lazy(() => import("./pages/Disiscriviti"));
 const Approva = lazy(() => import("./pages/Approva"));
+const Controllo = lazy(() => import("./pages/Controllo"));
 
 import ErrorBoundary from "./components/ErrorBoundary";
 import PushNudge from "./components/PushNudge";
@@ -115,6 +116,9 @@ function App() {
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/disiscriviti" element={<Disiscriviti />} />
             <Route path="/approva" element={<Approva />} />
+            {/* Pagina di servizio riservata: verifica che i dati spostati
+                fuori dal profilo pubblico siano arrivati a destinazione. */}
+            <Route path="/controllo" element={<Controllo />} />
             {/* Catch-all 404 — DEVE essere l'ultima route */}
             <Route path="*" element={<NotFound />} />
           </Routes>
