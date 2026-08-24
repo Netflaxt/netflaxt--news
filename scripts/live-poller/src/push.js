@@ -33,22 +33,33 @@ export async function diagnosticaPush(auth, helpers) {
   const { runQuery, fval } = helpers;
   const utenti = await runQuery(auth, { from: [{ collectionId: "users" }], limit: 2000 });
 
+  /* Token e indirizzi non stanno più nel profilo: erano leggibili da
+     chiunque. Si leggono dalle rispettive collection riservate — con lo
+     STESSO ripiego usato dall'invio vero, altrimenti questa diagnostica
+     direbbe "nessun dispositivo" mentre le notifiche partono regolarmente
+     dal vecchio percorso: un numero falso è peggio di nessun numero. */
+  const { elenchi: elenchiToken, campoData } = await leggiElenchiToken(auth, runQuery);
+  const contatti = await runQuery(auth, {
+    from: [{ collectionId: "contattiUtenti" }],
+    limit: 2000,
+  });
+
   const perTipo = {};
   const dettagli = [];
   let conToken = 0;
   let tokenTotali = 0;
-  // Serve a capire se l'email di conferma accesso può partire: senza
-  // indirizzo salvato sull'account il servizio non saprebbe a chi scrivere.
-  let senzaEmail = 0;
+  /* Senza un indirizzo salvato, l'email di conferma accesso non saprebbe
+     a chi essere spedita. Gli account che non hanno ancora fatto un
+     accesso da quando è cambiato lo spostano al primo collegamento. */
+  const senzaEmail = Math.max(0, utenti.length - contatti.length);
   const limite = Date.now() - GIORNI_ATTIVITA * 24 * 60 * 60 * 1000;
   let attiviRecenti = 0;
 
-  for (const u of utenti) {
-    if (!fval(u.fields.email)) senzaEmail++;
+  for (const u of elenchiToken) {
     const arr = u.fields.pushTokens?.arrayValue?.values;
     if (!Array.isArray(arr) || !arr.length) continue;
     conToken++;
-    const recente = (fval(u.fields.lastSeenAt) || 0) >= limite;
+    const recente = (fval(u.fields[campoData]) || 0) >= limite;
     if (recente) attiviRecenti++;
     for (const v of arr) {
       const f = v?.mapValue?.fields || {};
@@ -258,20 +269,35 @@ async function inviaMessaggio(env, auth, helpers, msg, { patchDoc, fval }) {
    dentro il campo `token`. */
 const GIORNI_ATTIVITA = 30;
 
-async function raccogliToken(auth, runQuery, fval, audience) {
-  const utenti = await runQuery(auth, {
-    from: [{ collectionId: "users" }],
+/* Da dove si leggono i dispositivi collegati alle notifiche.
+
+   Stavano nel profilo, che è pubblico: dall'elenco si capiva quanti
+   dispositivi ha una persona e di che tipo. Ora vivono in
+   `tokenDispositivi`, non leggibile da fuori.
+   Il ripiego sul vecchio percorso serve finché tutti non hanno riaperto
+   l'app almeno una volta: senza, chi non l'ha ancora fatto smetterebbe
+   di ricevere notifiche senza che nessuno se ne accorga. */
+async function leggiElenchiToken(auth, runQuery) {
+  const nuovi = await runQuery(auth, {
+    from: [{ collectionId: "tokenDispositivi" }],
     limit: 2000,
   });
+  if (nuovi.length) return { elenchi: nuovi, campoData: "ultimoAccesso" };
+  const vecchi = await runQuery(auth, { from: [{ collectionId: "users" }], limit: 2000 });
+  return { elenchi: vecchi, campoData: "lastSeenAt" };
+}
+
+async function raccogliToken(auth, runQuery, fval, audience) {
+  const { elenchi, campoData } = await leggiElenchiToken(auth, runQuery);
 
   const limite = Date.now() - GIORNI_ATTIVITA * 24 * 60 * 60 * 1000;
   // Teniamo anche a chi appartiene ogni token: serve per poterlo
   // cancellare quando il dispositivo non esiste più.
   const visti = new Map(); // token -> uid
 
-  for (const u of utenti) {
+  for (const u of elenchi) {
     if (audience === "subscribed-only") {
-      const ultimoAccesso = fval(u.fields.lastSeenAt);
+      const ultimoAccesso = fval(u.fields[campoData]);
       if (!ultimoAccesso || ultimoAccesso < limite) continue;
     }
     const arr = u.fields.pushTokens?.arrayValue?.values;
@@ -292,7 +318,7 @@ async function rimuoviTokenMorto(auth, uid, tokenMorto, helpers) {
   if (!uid || !tokenMorto) return;
   const { leggiDoc, patchDoc } = helpers;
   try {
-    const doc = await leggiDoc(auth, `users/${uid}`);
+    const doc = await leggiDoc(auth, `tokenDispositivi/${uid}`);
     const arr = doc?.fields?.pushTokens?.arrayValue?.values;
     if (!Array.isArray(arr)) return;
 
@@ -312,7 +338,7 @@ async function rimuoviTokenMorto(auth, uid, tokenMorto, helpers) {
     }
     if (tenuti.length === arr.length) return; // niente da cambiare
 
-    await patchDoc(auth, `users/${uid}`, { pushTokens: tenuti });
+    await patchDoc(auth, `tokenDispositivi/${uid}`, { pushTokens: tenuti });
   } catch (e) {
     console.error("pulizia token fallita:", e.message);
   }

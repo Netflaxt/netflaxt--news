@@ -27,7 +27,7 @@ export default function AdminPushTab({ onToast }) {
       try {
         const [qSnap, usersSnap] = await Promise.all([
           getDocs(query(collection(db, "pushQueue"), orderBy("createdAt", "desc"), limit(20))),
-          getDocs(collection(db, "users")),
+          getDocs(collection(db, "tokenDispositivi")),
         ]);
         setQueue(qSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
         const subs = usersSnap.docs.reduce((s, d) => {

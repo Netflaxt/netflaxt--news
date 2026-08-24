@@ -96,7 +96,7 @@ export async function enablePush(uid) {
  */
 async function salvaToken(uid, token) {
   const deviceId = getDeviceId();
-  const snap = await getDoc(doc(db, "users", uid));
+  const snap = await getDoc(doc(db, "tokenDispositivi", uid));
   const attuali = (snap.exists() && snap.data().pushTokens) || [];
 
   // Via il vecchio collegamento di questo dispositivo e gli eventuali
@@ -106,8 +106,9 @@ async function salvaToken(uid, token) {
   );
 
   await setDoc(
-    doc(db, "users", uid),
+    doc(db, "tokenDispositivi", uid),
     {
+      ultimoAccesso: serverTimestamp(),
       pushTokens: [
         ...altri,
         {
@@ -177,13 +178,24 @@ export async function refreshPushToken(uid) {
       /* niente da fare, riproverà al prossimo avvio */
     }
 
-    const snap = await getDoc(doc(db, "users", uid));
+    const snap = await getDoc(doc(db, "tokenDispositivi", uid));
     const attuali = (snap.exists() && snap.data().pushTokens) || [];
     const deviceId = getDeviceId();
     const giaCorretto =
       !appAggiornata &&
       attuali.some((t) => t?.token === token && t?.deviceId === deviceId);
-    if (giaCorretto) return; // tutto a posto, niente scritture inutili
+    if (giaCorretto) {
+      /* Il collegamento è a posto, ma segniamo comunque il passaggio:
+         è la data che distingue chi usa ancora l'app da chi l'ha
+         abbandonata, e serve alle notifiche rivolte ai soli attivi.
+         Prima quella data stava nel profilo pubblico. */
+      await setDoc(
+        doc(db, "tokenDispositivi", uid),
+        { ultimoAccesso: serverTimestamp() },
+        { merge: true }
+      );
+      return;
+    }
 
     await salvaToken(uid, token);
   } catch {
@@ -194,7 +206,7 @@ export async function refreshPushToken(uid) {
 
 export async function getUserPushTokens(uid) {
   if (!uid) return [];
-  const snap = await getDoc(doc(db, "users", uid));
+  const snap = await getDoc(doc(db, "tokenDispositivi", uid));
   if (!snap.exists()) return [];
   return snap.data().pushTokens || [];
 }

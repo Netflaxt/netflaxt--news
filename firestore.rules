@@ -111,6 +111,19 @@ service cloud.firestore {
       allow delete: if isAdmin() || isSelf(uid);
     }
 
+    // ─── DISPOSITIVI COLLEGATI ALLE NOTIFICHE ──────
+    /* Fuori dal profilo pubblico: dall'elenco si capiva quanti
+       dispositivi ha una persona, di che tipo e con che sistema — un
+       identikit che non serve a nessuno tranne al diretto interessato.
+       Il servizio che spedisce le notifiche legge con credenziali
+       proprie e non passa da queste regole. */
+    match /tokenDispositivi/{uid} {
+      allow get: if isSelf(uid) || isAdmin();
+      allow list: if isAdmin();
+      allow create, update: if isSelf(uid);
+      allow delete: if isSelf(uid) || isAdmin();
+    }
+
     // ─── MODERAZIONE (stato sanzioni di ogni utente) ─
     /* Fuori dal profilo, che è pubblico: motivo della sanzione, numero
        di ban e messaggi segnalati sono informazioni sul comportamento
