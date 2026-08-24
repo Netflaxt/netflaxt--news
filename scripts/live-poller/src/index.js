@@ -156,6 +156,32 @@ export default {
         });
         return json({ accodata, spedizione });
       }
+      /* Riapre una partita chiusa per errore, cosi il servizio torna a
+         seguirla e la chiude di nuovo con i dati veri. Serve quando una
+         lettura sbagliata l-ha dichiarata finita in anticipo. */
+      /* Rimuove una partita. Serve per ripulire i documenti creati per
+         sbaglio: scrivere su un identificativo inesistente non dà
+         errore, lo CREA — e un documento senza squadre né data resta lì
+         a sporcare il calendario (successo il 24/08/2026 usando un id
+         accorciato). */
+      if (q.get("cancellaPartita")) {
+        const auth = await getAccessToken(env);
+        const ok = await eliminaDoc(auth, `matches/${q.get("cancellaPartita")}`);
+        return json({ cancellata: q.get("cancellaPartita"), esito: ok });
+      }
+
+      if (q.get("riapri")) {
+        const auth = await getAccessToken(env);
+        const idPartita = q.get("riapri");
+        await patchDoc(auth, `matches/${idPartita}`, {
+          status: "live",
+          scored: false,
+          live: true,
+          liveStatus: "2H",
+          updatedAt: new Date(),
+        });
+        return json({ riaperta: idPartita, poi: await eseguiTutto(env) });
+      }
       return json(await eseguiTutto(env));
     } catch (e) {
       return json({ error: e.message }, 500);
@@ -207,7 +233,14 @@ async function eseguiTutto(env) {
 }
 
 const WINDOW_BEFORE_MS = 10 * 60 * 1000;  // 10 min prima del kickoff
-const WINDOW_AFTER_MS = 150 * 60 * 1000;  // 150 min dopo (copre recuperi/ET)
+/* Durata minima reale di una partita: 45 + 15 di intervallo + 45, senza
+   contare il recupero. Prima di questo tempo una gara NON puo essere
+   finita, quindi una sua sparizione dalle live e un problema di lettura. */
+const MIN_DURATA_MS = 100 * 60 * 1000;
+/* Oltre questo tempo dal fischio d-inizio una partita e finita di
+   sicuro, comunque siano andate le letture. */
+const MAX_DURATA_MS = 165 * 60 * 1000;
+const WINDOW_AFTER_MS = 200 * 60 * 1000;  // copre anche la chiusura di sicurezza (165 min)
 const IN_PLAY = ["1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"];
 const FINISHED = ["FT", "AET", "PEN"];
 
@@ -240,7 +273,7 @@ async function poll(env, authCondiviso) {
 
   // 2) Dati live da API-Football. Usiamo ?live=all (accessibile sul piano
   //    GRATIS) e filtriamo la Lazio: ?season=2026 sul free è bloccato.
-  const fx = await fetchLiveLazio(env);
+  const { partita: fx, attendibile } = await fetchLiveLazio(env);
   const curLive = fval(m.fields.live) === true;
   const curStatus = fval(m.fields.liveStatus);
 
@@ -321,7 +354,21 @@ async function poll(env, authCondiviso) {
   // 4) La Lazio non è più tra le partite live. Se la NOSTRA era in corso, la
   //    partita è appena finita: finalizziamo da soli con l'ultimo stato
   //    conosciuto (punteggio + tabellino già salvati poll dopo poll).
-  if (curLive && curStatus !== "FT") {
+  /* ⚠️ DUE CONDIZIONI, ed entrambe servono.
+
+     1. La risposta dell'API deve essere ATTENDIBILE. Se non lo è (quota
+        finita, chiave scaduta) l'elenco arriva vuoto e sembrerebbe che
+        la partita sia finita, mentre invece non ne sappiamo nulla.
+     2. Deve essere passato abbastanza tempo dal fischio d'inizio. Una
+        partita non può finire prima di ~100 minuti reali (45 + 15 di
+        intervallo + 45 + recupero). Se "sparisce" prima, è un problema
+        di lettura, non la fine della gara.
+
+     Senza queste due condizioni Bologna-Lazio è stata chiusa 0-1 mentre
+     si giocava ancora, con i punti dei pronostici già assegnati sul
+     parziale (24/08/2026). */
+  const dallInizio = Date.now() - new Date(fval(m.fields.kickoff) || 0).getTime();
+  if (curLive && curStatus !== "FT" && attendibile && dallInizio >= MIN_DURATA_MS) {
     const home = fval(m.fields.liveHome) ?? 0;
     const away = fval(m.fields.liveAway) ?? 0;
     const events = readEvents(m.fields.events);
@@ -329,6 +376,22 @@ async function poll(env, authCondiviso) {
       casa: fval(m.fields.homeTeam),
       ospite: fval(m.fields.awayTeam),
     });
+  }
+  /* Il rischio opposto: se la risposta resta non attendibile per ore, la
+     partita rimarrebbe segnata "in corso" per sempre. Passato il tempo
+     in cui QUALSIASI partita è certamente terminata, la chiudiamo con
+     l'ultimo punteggio conosciuto: è meglio di una diretta che non
+     finisce mai. */
+  if (curLive && curStatus !== "FT" && dallInizio >= MAX_DURATA_MS) {
+    const home = fval(m.fields.liveHome) ?? 0;
+    const away = fval(m.fields.liveAway) ?? 0;
+    return await finalize(auth, m.id, home, away, readEvents(m.fields.events), "tempo-scaduto", {
+      casa: fval(m.fields.homeTeam),
+      ospite: fval(m.fields.awayTeam),
+    });
+  }
+  if (curLive && !attendibile) {
+    return { skipped: "risposta non attendibile: la partita resta aperta", curLive };
   }
   return { skipped: "non in corso", curLive };
 }
@@ -396,6 +459,19 @@ async function scorePredictions(auth, matchId, home, away) {
 
 /* ── API-Football: partite LIVE (?live=all). A differenza di ?season=…
    questo endpoint è accessibile anche sul piano gratuito. ──────── */
+/* Restituisce { partita, attendibile }.
+
+   ⚠️ `attendibile` è la parte importante, e la sua assenza ha causato un
+   guaio vero: API-Football, quando si esauriscono le 100 richieste
+   giornaliere del piano gratuito, NON risponde con un errore — risponde
+   200 con un elenco VUOTO e il motivo dentro `errors`.
+   Il codice interpretava quell'elenco vuoto come "la partita non è più
+   in diretta, quindi è finita", chiudeva la gara e assegnava i punti dei
+   pronostici sul punteggio parziale. È successo durante Bologna-Lazio il
+   24/08/2026: partita dichiarata finita 0-1 mentre si stava ancora
+   giocando.
+   Una risposta non attendibile va trattata come "non lo so", mai come
+   "è finita". */
 async function fetchLiveLazio(env) {
   const teamId = env.TEAM_ID || "487";
   const res = await fetch("https://v3.football.api-sports.io/fixtures?live=all", {
@@ -403,14 +479,24 @@ async function fetchLiveLazio(env) {
   });
   if (!res.ok) throw new Error(`API-Football HTTP ${res.status}`);
   const data = await res.json();
-  const list = Array.isArray(data.response) ? data.response : [];
-  return (
-    list.find(
+
+  /* `errors` è [] quando va tutto bene, un oggetto con dentro il motivo
+     quando c'è un problema (quota finita, chiave non valida, piano non
+     abilitato). In quel caso la risposta non dice nulla sulla partita. */
+  const errori = data?.errors;
+  const haErrori = errori && (Array.isArray(errori) ? errori.length > 0 : Object.keys(errori).length > 0);
+  if (haErrori || !Array.isArray(data.response)) {
+    console.error("API-Football non attendibile:", JSON.stringify(errori).slice(0, 200));
+    return { partita: null, attendibile: false };
+  }
+
+  const partita =
+    data.response.find(
       (fx) =>
         String(fx.teams?.home?.id) === teamId ||
         String(fx.teams?.away?.id) === teamId
-    ) || null
-  );
+    ) || null;
+  return { partita, attendibile: true };
 }
 
 /* ── Eventi della partita (fallback: usato solo se ?live=all non li
