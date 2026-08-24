@@ -94,6 +94,20 @@ export async function enablePush(uid) {
  * l'elenco si riempirebbe di voci morte (è già successo: da 2 dispositivi
  * reali erano diventate 6 registrazioni).
  */
+/* Il sito è aperto come app installata (schermata Home) o dal browser? */
+function appInstallata() {
+  try {
+    return (
+      (typeof window !== "undefined" &&
+        window.matchMedia &&
+        window.matchMedia("(display-mode: standalone)").matches) ||
+      (typeof navigator !== "undefined" && navigator.standalone === true)
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function salvaToken(uid, token) {
   const deviceId = getDeviceId();
   const snap = await getDoc(doc(db, "tokenDispositivi", uid));
@@ -116,6 +130,12 @@ async function salvaToken(uid, token) {
           deviceId,
           ua: navigator.userAgent,
           createdAt: new Date().toISOString(),
+          /* Su iPhone le notifiche arrivano SOLO dall'app aggiunta alla
+             schermata Home, mai da Safari. Senza questo dato, guardando
+             la diagnostica non si può sapere se un iPhone registrato le
+             riceverà davvero: si vedrebbe un dispositivo collegato che
+             però non riceve nulla, senza capire perché. */
+          pwa: appInstallata(),
         },
       ],
     },

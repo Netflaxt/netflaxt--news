@@ -72,12 +72,31 @@ export async function diagnosticaPush(auth, helpers) {
         ? "Mac"
         : "altro";
       perTipo[tipo] = (perTipo[tipo] || 0) + 1;
+      /* ⚠️ L'ordine dei controlli conta: lo user agent di Chrome su
+         Android contiene la parola "Safari", quindi cercandola per prima
+         ogni telefono Android risultava "Safari/PWA". La diagnostica
+         diceva una cosa falsa (visto il 24/08/2026: 4 Android tutti
+         etichettati Safari). */
+      const browser = /CriOS/i.test(ua)
+        ? "Chrome su iPhone"
+        : /FxiOS/i.test(ua)
+        ? "Firefox su iPhone"
+        : /EdgA?\//i.test(ua)
+        ? "Edge"
+        : /Chrome\//i.test(ua)
+        ? "Chrome"
+        : /Safari\//i.test(ua)
+        ? "Safari"
+        : "altro";
+
       dettagli.push({
         tipo,
+        browser,
+        /* Su iPhone le notifiche arrivano SOLO dall'app aggiunta alla
+           schermata Home. Senza questo dato non si può sapere se un
+           iPhone registrato le riceverà davvero. */
+        appInstallata: d.pwa === true ? "sì" : d.pwa === false ? "no" : "non rilevato",
         registratoIl: (d.creatoIl || "").slice(0, 16).replace("T", " "),
-        // utile per capire se il dispositivo ha aperto l'app installata
-        // (su iPhone le notifiche funzionano solo da app in schermata Home)
-        browser: /CriOS/i.test(ua) ? "Chrome iOS" : /Safari/i.test(ua) ? "Safari/PWA" : "altro",
       });
     }
   }
@@ -292,6 +311,7 @@ async function leggiElenchiToken(auth, runQuery, fval) {
           token,
           ua: f.ua?.stringValue || "",
           creatoIl: f.createdAt?.stringValue || "",
+          pwa: f.pwa?.booleanValue,
         });
       }
       const quando = fval(u.fields[campoData]);
