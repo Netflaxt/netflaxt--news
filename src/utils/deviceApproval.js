@@ -88,30 +88,26 @@ export async function verificaDispositivo(user) {
 
 /** Chiede al servizio di spedire (o rispedire) l'email di conferma.
 
-   Riprova un paio di volte prima di arrendersi. Serve perché la
-   richiesta viene creata un istante prima: il servizio la legge dal
-   database e potrebbe non vederla ancora, dato che la scrittura impiega
-   una frazione di secondo a diventare visibile a tutti.
-   Senza i tentativi, la prima email non partiva mai e bisognava sempre
-   premere "Rimanda" (problema riscontrato il 24/08/2026). */
+   L'attesa perché la richiesta appena creata diventi leggibile è a
+   carico del servizio, che rilegge da solo un paio di volte prima di
+   arrendersi. Qui si riprova soltanto se il servizio non è stato
+   raggiunto affatto, cioè per un problema di rete. */
 export async function inviaEmailApprovazione(uid, deviceId = getDeviceId()) {
-  const attese = [0, 1200, 2500]; // subito, poi due tentativi più distanziati
-  for (const attesa of attese) {
-    if (attesa) await new Promise((r) => setTimeout(r, attesa));
+  for (let giro = 1; giro <= 2; giro++) {
+    if (giro > 1) await new Promise((r) => setTimeout(r, 1500));
     try {
       const res = await fetch(
         `${SERVIZIO}/?richiediApprovazione=${encodeURIComponent(uid)}&device=${encodeURIComponent(deviceId)}`
       );
       const dati = await res.json().catch(() => ({}));
       if (dati.ok) return true;
-      // "dispositivo sconosciuto" o "codice mancante" = la richiesta non
-      // è ancora visibile: ha senso riprovare. Altri motivi no.
-      const daRiprovare =
-        typeof dati.motivo === "string" &&
-        (dati.motivo.includes("sconosciuto") || dati.motivo.includes("codice"));
-      if (!daRiprovare) return false;
-    } catch {
-      /* rete instabile: il tentativo successivo può andare a buon fine */
+      // Senza questa riga un mancato invio è invisibile: si vede solo
+      // che l'email non arriva, senza sapere perché.
+      console.warn("Email di conferma non inviata:", dati.motivo || res.status);
+      return false;
+    } catch (e) {
+      console.warn("Email di conferma: servizio non raggiunto —", e?.message);
+      /* rete instabile: il secondo tentativo può andare a buon fine */
     }
   }
   return false;

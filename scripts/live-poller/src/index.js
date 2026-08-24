@@ -57,7 +57,7 @@ export default {
         const esito = await richiediApprovazione(
           env,
           auth,
-          { leggiDoc, fval },
+          { leggiDoc, fval, patchDoc },
           q.get("richiediApprovazione"),
           q.get("device")
         );
@@ -89,6 +89,15 @@ export default {
       const chiave = env.ADMIN_KEY;
       if (!chiave || q.get("key") !== chiave) {
         return json({ error: "accesso non autorizzato" }, 401);
+      }
+      /* Esito degli ultimi invii dell'email di conferma accesso. */
+      if (q.get("diag") === "accessi") {
+        const auth = await getAccessToken(env);
+        const d = await leggiDoc(auth, "sistema/accessi");
+        const righe = (d?.fields?.ultimi?.arrayValue?.values || [])
+          .map((v) => v.stringValue)
+          .filter(Boolean);
+        return json({ ultimiInvii: righe.length ? righe : ["nessuna richiesta registrata"] });
       }
       if (q.get("diag") === "push") {
         const auth = await getAccessToken(env);

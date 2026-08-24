@@ -14,27 +14,63 @@
 const SITO = "https://netflaxt.it";
 const MITTENTE = "Netflaxt News <news@netflaxt.it>";
 
+/* Quante volte rileggere la richiesta prima di arrendersi, e quanto
+   attendere fra un tentativo e l'altro.
+
+   Il sito chiama questa funzione un istante dopo aver scritto la
+   richiesta: può capitare di rileggerla prima che la scrittura sia
+   arrivata fino in fondo, e allora sembra che non esista o che sia
+   incompleta. Riprovare qui dentro risolve tutti questi casi in un colpo
+   solo — prima l'attesa era a carico del sito, che però distingueva fra
+   i vari modi in cui la richiesta può risultare incompleta e in uno di
+   essi si arrendeva subito: era il motivo per cui la prima email non
+   partiva mai e bisognava premere "Rimanda" (24/08/2026). */
+const TENTATIVI = 3;
+const PAUSA_MS = 700;
+
 /* Spedisce l'email di conferma. Viene chiamata dal sito subito dopo il
    tentativo di accesso, quindi deve essere rapida. */
 export async function richiediApprovazione(env, auth, helpers, uid, deviceId) {
+  const esito = await provaAInviare(env, auth, helpers, uid, deviceId);
+  await annota(auth, helpers, esito);
+  return esito;
+}
+
+async function provaAInviare(env, auth, helpers, uid, deviceId) {
   const { leggiDoc, fval } = helpers;
   if (!env.RESEND_KEY) return { ok: false, motivo: "invio email non configurato" };
   if (!uid || !deviceId) return { ok: false, motivo: "richiesta incompleta" };
 
-  // La richiesta deve esistere davvero: senza questo controllo chiunque
-  // potrebbe far partire email a raffica verso indirizzi altrui.
-  const dispositivo = await leggiDoc(auth, `users/${uid}/devices/${deviceId}`);
-  if (!dispositivo?.fields) return { ok: false, motivo: "dispositivo sconosciuto" };
-  if (fval(dispositivo.fields.approved) !== false) {
-    return { ok: false, motivo: "nessuna conferma in attesa" };
+  let motivo = "";
+  for (let giro = 1; giro <= TENTATIVI; giro++) {
+    if (giro > 1) await new Promise((r) => setTimeout(r, PAUSA_MS));
+
+    // La richiesta deve esistere davvero: senza questo controllo chiunque
+    // potrebbe far partire email a raffica verso indirizzi altrui.
+    const dispositivo = await leggiDoc(auth, `users/${uid}/devices/${deviceId}`);
+    if (!dispositivo?.fields) {
+      motivo = "dispositivo sconosciuto";
+      continue;
+    }
+    if (fval(dispositivo.fields.approved) !== false) {
+      motivo = "nessuna conferma in attesa";
+      continue;
+    }
+    const token = fval(dispositivo.fields.approvalToken);
+    if (!token) {
+      motivo = "codice mancante";
+      continue;
+    }
+    return spedisci(env, auth, helpers, uid, dispositivo, token, giro);
   }
+  return { ok: false, motivo, tentativi: TENTATIVI };
+}
 
-  const token = fval(dispositivo.fields.approvalToken);
-  if (!token) return { ok: false, motivo: "codice mancante" };
-
+async function spedisci(env, auth, helpers, uid, dispositivo, token, tentativi) {
+  const { leggiDoc, fval } = helpers;
   const utente = await leggiDoc(auth, `users/${uid}`);
   const email = fval(utente?.fields?.email);
-  if (!email) return { ok: false, motivo: "indirizzo non disponibile" };
+  if (!email) return { ok: false, motivo: "indirizzo non disponibile", tentativi };
 
   const descrizione = fval(dispositivo.fields.label) || "Dispositivo sconosciuto";
   const nome = fval(utente?.fields?.displayName) || "";
@@ -56,9 +92,34 @@ export async function richiediApprovazione(env, auth, helpers, uid, deviceId) {
   if (!res.ok) {
     const dettaglio = (await res.text()).slice(0, 200);
     console.error(`Resend ${res.status}: ${dettaglio}`);
-    return { ok: false, motivo: "invio non riuscito" };
+    return { ok: false, motivo: `invio non riuscito (${res.status})`, tentativi };
   }
-  return { ok: true };
+  return { ok: true, tentativi };
+}
+
+/* Tiene traccia degli ultimi esiti su Firestore.
+
+   Senza, un mancato invio è invisibile: si vede solo che l'email non
+   arriva, e per capire perché bisognerebbe riprodurre il problema con
+   gli strumenti da sviluppatore aperti. Così invece basta un accesso
+   normale e l'esito resta scritto.
+   Non viene registrato nulla di personale: solo l'ora e il motivo. */
+async function annota(auth, helpers, esito) {
+  const { patchDoc, leggiDoc } = helpers;
+  if (!patchDoc || !leggiDoc) return;
+  try {
+    const doc = await leggiDoc(auth, "sistema/accessi");
+    const vecchi = (doc?.fields?.ultimi?.arrayValue?.values || [])
+      .map((v) => v.stringValue)
+      .filter(Boolean);
+    const quando = new Date().toISOString().slice(0, 16).replace("T", " ");
+    const riga = esito.ok
+      ? `${quando} · email inviata (al tentativo ${esito.tentativi})`
+      : `${quando} · NON inviata: ${esito.motivo}`;
+    await patchDoc(auth, "sistema/accessi", { ultimi: [riga, ...vecchi].slice(0, 12) });
+  } catch {
+    /* la diagnostica non deve mai impedire l'invio dell'email */
+  }
 }
 
 /* Il link nell'email è stato aperto: il dispositivo diventa di fiducia.

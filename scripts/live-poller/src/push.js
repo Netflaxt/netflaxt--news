@@ -37,10 +37,14 @@ export async function diagnosticaPush(auth, helpers) {
   const dettagli = [];
   let conToken = 0;
   let tokenTotali = 0;
+  // Serve a capire se l'email di conferma accesso può partire: senza
+  // indirizzo salvato sull'account il servizio non saprebbe a chi scrivere.
+  let senzaEmail = 0;
   const limite = Date.now() - GIORNI_ATTIVITA * 24 * 60 * 60 * 1000;
   let attiviRecenti = 0;
 
   for (const u of utenti) {
+    if (!fval(u.fields.email)) senzaEmail++;
     const arr = u.fields.pushTokens?.arrayValue?.values;
     if (!Array.isArray(arr) || !arr.length) continue;
     conToken++;
@@ -73,6 +77,7 @@ export async function diagnosticaPush(auth, helpers) {
 
   return {
     utentiTotali: utenti.length,
+    utentiSenzaIndirizzoEmail: senzaEmail,
     utentiConNotificheAttive: conToken,
     diCuiAttiviUltimi30gg: attiviRecenti,
     dispositiviRegistrati: tokenTotali,
