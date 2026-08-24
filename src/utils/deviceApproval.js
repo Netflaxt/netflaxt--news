@@ -45,10 +45,22 @@ export async function verificaDispositivo(user) {
     return { esito: "ok" };
   }
 
-  // Già in attesa da un tentativo precedente: non rimandiamo l'email
-  // in automatico, ci pensa il pulsante "Rimanda".
+  // In attesa di conferma. Due casi: un tentativo precedente non ancora
+  // confermato, oppure un dispositivo disconnesso che prova a rientrare
+  // (in quel caso il codice è stato azzerato e va rigenerato, altrimenti
+  // l'email di conferma non potrebbe nemmeno partire).
   if (snap.exists() && snap.data()?.approved === false) {
-    return { esito: "attesa", token: snap.data()?.approvalToken };
+    let token = snap.data()?.approvalToken;
+    if (!token) {
+      token = crypto.randomUUID();
+      await setDoc(
+        ref,
+        { approvalToken: token, revoked: false, richiestoIl: serverTimestamp() },
+        { merge: true }
+      );
+      await inviaEmailApprovazione(user.uid, deviceId);
+    }
+    return { esito: "attesa", token };
   }
 
   // Primo dispositivo in assoluto → approvato d'ufficio (vedi nota 2)

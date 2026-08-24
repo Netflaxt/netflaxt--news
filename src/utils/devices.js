@@ -124,6 +124,14 @@ export async function registerDevice(uid) {
   const ref = doc(db, "users", uid, "devices", deviceId);
   const snap = await getDoc(ref);
 
+  /* Dispositivo disconnesso da un altro dispositivo: NON va
+     ri-registrato, altrimenti la disconnessione verrebbe annullata
+     proprio da chi doveva subirla. Chi chiama se ne accorge dal
+     valore restituito e chiude la sessione. */
+  if (snap.exists() && snap.data()?.revoked === true) {
+    return { revocato: true };
+  }
+
   const payload = {
     deviceId,
     userAgent: ua.slice(0, 300),
@@ -161,7 +169,12 @@ export function subscribeDevices(uid, cb, onErr) {
   return onSnapshot(
     colRef,
     (snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const list = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        // I dispositivi disconnessi restano salvati per impedire che si
+        // ri-registrino da soli, ma non vanno mostrati: per l'utente
+        // sono stati rimossi e rivederli in elenco sembrerebbe un errore.
+        .filter((d) => d.revoked !== true);
       // Ordina per ultimo accesso (più recente prima)
       list.sort((a, b) => {
         const ta = a.lastSeen?.toMillis?.() || 0;
@@ -178,7 +191,36 @@ export function subscribeDevices(uid, cb, onErr) {
 }
 
 /* ─── Rimuovi un device (forza logout su quel device) ───────── */
+/* Disconnette un dispositivo.
+
+   NON cancella il documento: lo marca come revocato.
+   Cancellarlo non bastava. Se il dispositivo era chiuso in quel momento
+   non se ne accorgeva, e alla riapertura si ri-registrava da solo
+   ricreando il documento: la disconnessione veniva annullata e si
+   restava dentro come prima (problema riscontrato il 24/08/2026).
+   Con il segno, invece, alla riapertura il dispositivo lo trova e si
+   disconnette da sé.
+
+   Viene tolta anche l'approvazione: per rientrare da quel dispositivo
+   servirà di nuovo la conferma via email — è il senso di averlo
+   disconnesso. */
 export async function removeDevice(uid, deviceId) {
+  if (!uid || !deviceId) return;
+  await setDoc(
+    doc(db, "users", uid, "devices", deviceId),
+    {
+      revoked: true,
+      revokedAt: serverTimestamp(),
+      approved: false,
+      approvalToken: null,
+    },
+    { merge: true }
+  );
+}
+
+/* Elimina definitivamente la traccia di un dispositivo già disconnesso
+   (usata quando quel dispositivo si è effettivamente disconnesso). */
+export async function forgetDevice(uid, deviceId) {
   if (!uid || !deviceId) return;
   await deleteDoc(doc(db, "users", uid, "devices", deviceId));
 }
@@ -195,11 +237,18 @@ export function watchMyDevice(uid, onRevoked) {
   return onSnapshot(
     ref,
     (snap) => {
+      // Disconnesso da un altro dispositivo: vale sia se il documento
+      // sparisce sia se viene marcato come revocato (è il caso normale,
+      // vedi removeDevice). Questo controllo precede l'inizializzazione:
+      // se il segno c'era già all'apertura, va rilevato subito.
+      if (snap.exists() && snap.data()?.revoked === true) {
+        onRevoked && onRevoked();
+        return;
+      }
       if (!initialized) {
         if (snap.exists()) initialized = true;
         return;
       }
-      // initialized = true e doc è sparito → admin/utente ha revocato
       if (!snap.exists()) {
         onRevoked && onRevoked();
       }

@@ -27,8 +27,16 @@ export default function useDeviceTracking(user) {
 
     (async () => {
       try {
-        await registerDevice(user.uid);
+        const esito = await registerDevice(user.uid);
         if (cancelled) return;
+
+        // Questo dispositivo è stato disconnesso da un altro: si esce
+        // subito, senza aspettare il controllo in tempo reale (che
+        // scatterebbe comunque, ma solo un istante dopo).
+        if (esito?.revocato) {
+          await signOut(auth).catch(() => {});
+          return;
+        }
 
         // Heartbeat lastSeen
         interval = setInterval(() => {
