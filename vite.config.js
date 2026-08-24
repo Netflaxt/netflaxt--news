@@ -208,7 +208,16 @@ export default defineConfig({
           },
         ],
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//, /^\/admin/],
+        /* I percorsi che iniziano con /__/ sono di Firebase, non nostri:
+           lì vive la pagina che completa l'accesso con Google.
+           Senza questa esclusione il service worker risponde con la home
+           del sito, React non riconosce quel percorso e mostra la 404:
+           il popup di Google muore lì e l'accesso fallisce con un
+           fuorviante "popup chiuso dall'utente".
+           Succedeva solo dal dominio nostro (netflaxt.it), perché prima
+           la pagina di Google si apriva su firebaseapp.com — un altro
+           dominio, fuori dalla portata del service worker. */
+        navigateFallbackDenylist: [/^\/api\//, /^\/admin/, /^\/__\//],
       },
 
       devOptions: {
