@@ -399,3 +399,35 @@ select:focus-visible {
   from { transform: translate(30px, 0) scale(1.12); }
   to   { transform: translate(-50px, 24px) scale(1); }
 }
+/* ─────────────────────────────────────────────────────────────
+   Corpo degli articoli — rete di sicurezza sull'andare a capo.
+
+   Il testo degli articoli è scritto altrove e spesso incollato da
+   siti esterni: si porta dietro spazi che impediscono di andare a
+   capo, indirizzi lunghissimi senza spazi, parole attaccate. Basta
+   una riga che non si spezza per far uscire l'intera pagina dallo
+   schermo — successo il 24/08/2026, il giorno dell'annuncio, con un
+   paragrafo largo 3232px dentro una colonna da 704.
+
+   La pulizia del testo avviene già in utils/testoArticolo.js. Questo
+   è il secondo strato: qualunque cosa arrivi, la riga si spezza e la
+   pagina regge. Non toglierlo pensando che basti la pulizia.
+   ───────────────────────────────────────────────────────────── */
+.prose-article,
+.prose-article-html {
+  overflow-wrap: break-word;
+  word-break: break-word;
+  max-width: 100%;
+}
+.prose-article-html img,
+.prose-article-html video,
+.prose-article-html iframe {
+  max-width: 100%;
+  height: auto;
+}
+.prose-article-html pre,
+.prose-article-html table {
+  max-width: 100%;
+  overflow-x: auto;
+  display: block;
+}

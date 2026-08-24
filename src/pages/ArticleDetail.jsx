@@ -24,6 +24,7 @@ import ArticleVideo from "../components/ArticleVideo";
 import BookmarkButton from "../components/BookmarkButton";
 import NotFound from "./NotFound";
 import { setSEO, resetSEO } from "../utils/seo";
+import { ripulisciTesto } from "../utils/testoArticolo";
 import { SkeletonArticleDetail } from "../components/Skeleton";
 
 const FALLBACK_IMG =
@@ -275,10 +276,10 @@ export default function ArticleDetail() {
             isHtml ? (
               <div
                 className="prose-article-html"
-                dangerouslySetInnerHTML={{ __html: article.content }}
+                dangerouslySetInnerHTML={{ __html: ripulisciTesto(article.content) }}
               />
             ) : (
-              article.content
+              ripulisciTesto(article.content)
                 .split("\n")
                 .map((para, idx) =>
                   para.trim() ? (
@@ -325,10 +326,17 @@ export default function ArticleDetail() {
                 href={article.sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="group inline-flex items-center gap-2 text-text-primary font-semibold hover:text-accent transition"
+                /* `break-all` e `min-w-0` servono perché qui finisce un
+                   indirizzo web: non avendo spazi non si spezza da solo
+                   e spinge la freccia fuori dallo schermo, allargando
+                   l'intera pagina (visto su telefono il 24/08/2026 con
+                   un link lungo di sslazio.it). */
+                className="group inline-flex items-start gap-2 text-text-primary font-semibold hover:text-accent transition max-w-full min-w-0 break-all"
               >
                 {article.source || article.sourceUrl}
-                <span className="inline-block transition-transform group-hover:translate-x-1">↗</span>
+                <span className="inline-block shrink-0 transition-transform group-hover:translate-x-1">
+                  ↗
+                </span>
               </a>
             ) : (
               <div className="text-text-primary font-semibold">{article.source}</div>

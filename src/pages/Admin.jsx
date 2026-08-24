@@ -36,6 +36,7 @@ import {
   BallIcon, WrenchIcon, BellIcon,
 } from "../components/icons";
 import VideoUploader from "../components/admin/VideoUploader";
+import { ripulisciTesto } from "../utils/testoArticolo";
 import AdminTabsBar from "../components/admin/AdminTabsBar";
 
 const ADMIN_EMAIL = "cretellamattia36@gmail.com";
@@ -204,9 +205,18 @@ export default function Admin() {
 
   const handleSaveEdit = async (id) => {
     try {
-      await updateDoc(doc(db, "articles", id), editData);
+      /* Anche in modifica: se si reincolla del testo da un altro sito
+         rientrerebbero gli spazi che impediscono di andare a capo.
+         Vedi utils/testoArticolo.js. */
+      const ripuliti = {
+        ...editData,
+        ...(editData.title !== undefined && { title: ripulisciTesto(editData.title) }),
+        ...(editData.excerpt !== undefined && { excerpt: ripulisciTesto(editData.excerpt) }),
+        ...(editData.content !== undefined && { content: ripulisciTesto(editData.content) }),
+      };
+      await updateDoc(doc(db, "articles", id), ripuliti);
       setArticles((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, ...editData } : a))
+        prev.map((a) => (a.id === id ? { ...a, ...ripuliti } : a))
       );
       setEditingId(null);
       showToast("Modifiche salvate", "success");
@@ -285,7 +295,13 @@ export default function Admin() {
     setLoading(true);
     try {
       const nuovo = await addDoc(collection(db, "articles"), {
-        title, excerpt, content, category, imageUrl,
+        title: ripulisciTesto(title),
+        excerpt: ripulisciTesto(excerpt),
+        /* Ripulito PRIMA di salvare: il copia-incolla da altri siti
+           porta spazi che impediscono di andare a capo e sfondano la
+           pagina. Vedi utils/testoArticolo.js. */
+        content: ripulisciTesto(content),
+        category, imageUrl,
         video: video || null,
         featured, source, sourceUrl, journalist,
         author: "Mattia", date: Timestamp.now(),
