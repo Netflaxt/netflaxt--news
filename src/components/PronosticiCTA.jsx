@@ -6,7 +6,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { listMatches } from "../utils/matches";
+import { subscribeProssimePartite } from "../utils/matches";
 import { logoForTeam } from "../utils/teamLogos";
 import { TrophyIcon, BallIcon, EmptyIcon } from "./icons";
 
@@ -37,8 +37,11 @@ export default function PronosticiCTA() {
 
   useEffect(() => {
     let cancelled = false;
-    listMatches()
-      .then((list) => {
+    /* Solo le prossime partite: prima rileggeva l-intero calendario, e
+       insieme alla barra in cima faceva 78 letture per ogni visita alla
+       home. Vedi la nota in utils/matches.js. */
+    const unsub = subscribeProssimePartite(
+      (list) => {
         if (cancelled) return;
         const now = Date.now();
         const up = list
@@ -48,10 +51,12 @@ export default function PronosticiCTA() {
           })
           .sort((a, b) => (a.kickoff?.toMillis?.() || 0) - (b.kickoff?.toMillis?.() || 0));
         setNextMatch(up[0] || null);
-      })
-      .catch(() => {});
+      },
+      () => {}
+    );
     return () => {
       cancelled = true;
+      unsub && unsub();
     };
   }, []);
 

@@ -8,7 +8,7 @@
    ───────────────────────────────────────────────────────────── */
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { subscribeMatches } from "../utils/matches";
+import { subscribeProssimePartite } from "../utils/matches";
 import { logoForTeam } from "../utils/teamLogos";
 import LiveBadge, { getLiveState } from "./LiveBadge";
 
@@ -53,7 +53,8 @@ export default function NextMatchBar() {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    const unsub = subscribeMatches(
+    // Solo le prossime, non tutto il calendario: vedi nota in utils/matches.js
+    const unsub = subscribeProssimePartite(
       (list) => {
         const t = Date.now();
         // Priorità: una partita ATTUALMENTE in corso (live dal poller)

@@ -30,6 +30,8 @@ import {
   doc,
   query,
   orderBy,
+  where,
+  limit,
   onSnapshot,
   getDocs,
   Timestamp,
@@ -47,6 +49,38 @@ export function subscribeMatches(cb, onError) {
     (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
     (e) => {
       console.error("Errore lettura partite:", e);
+      onError && onError(e);
+    }
+  );
+}
+
+
+/* Solo le prossime partite, non tutto il calendario.
+
+   ⚠️ PERCHÉ ESISTE: la home mostrava la barra della prossima partita e
+   l'invito ai pronostici, e ognuno dei due rileggeva TUTTE le partite
+   della stagione — 39 documenti a testa, 78 letture per ogni singola
+   visita alla home. Con il traffico dell'annuncio è uno dei consumi che
+   ha contribuito a esaurire la quota giornaliera del database
+   (24/08/2026). Qui se ne leggono al massimo cinque.
+
+   La finestra parte da tre ore fa, non da adesso: una partita iniziata
+   ma non ancora finita deve continuare a comparire.
+   La condizione e l'ordinamento sono sullo stesso campo, quindi non
+   serve nessun indice aggiuntivo su Firestore. */
+export function subscribeProssimePartite(cb, onError, quante = 5) {
+  const da = Timestamp.fromMillis(Date.now() - 3 * 60 * 60 * 1000);
+  const q = query(
+    collection(db, "matches"),
+    where("kickoff", ">=", da),
+    orderBy("kickoff", "asc"),
+    limit(quante)
+  );
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (e) => {
+      console.error("Errore lettura prossime partite:", e);
       onError && onError(e);
     }
   );
