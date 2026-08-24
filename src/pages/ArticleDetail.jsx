@@ -315,6 +315,23 @@ export default function ArticleDetail() {
           </div>
         )}
 
+        {/* Seconda foto — chiude l'articolo, prima della fonte.
+
+            Proporzioni libere: a differenza della copertina non deve
+            stare in un formato fisso, quindi si adatta all'immagine
+            invece di ritagliarla. `loading="lazy"` perché sta in fondo:
+            si scarica solo quando il lettore ci arriva davvero. */}
+        {article.imageUrl2 && (
+          <figure className="mt-10">
+            <img
+              src={article.imageUrl2}
+              alt={article.title ? `Immagine dell'articolo: ${article.title}` : "Immagine dell'articolo"}
+              loading="lazy"
+              className="w-full h-auto rounded-lg border border-border bg-bg-surface"
+            />
+          </figure>
+        )}
+
         {/* Fonte */}
         {(article.source || article.sourceUrl) && (
           <div className="mt-8 p-5 rounded-lg bg-bg-surface border border-border">

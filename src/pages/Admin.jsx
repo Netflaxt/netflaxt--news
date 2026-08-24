@@ -64,6 +64,11 @@ export default function Admin() {
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [imageUrl, setImageUrl] = useState("");
   const [imageUploading, setImageUploading] = useState(false);
+  /* Seconda foto, facoltativa: compare in fondo all-articolo, prima
+     del riquadro della fonte. Non ha ritaglio perche non deve stare in
+     un formato fisso come la copertina. */
+  const [imageUrl2, setImageUrl2] = useState("");
+  const [image2Uploading, setImage2Uploading] = useState(false);
   const [video, setVideo] = useState(null); // { url, type, embedUrl, thumbnail, duration, ... }
   const [featured, setFeatured] = useState(false);
   const [source, setSource] = useState("");
@@ -79,6 +84,7 @@ export default function Admin() {
   const [showCrop, setShowCrop] = useState(false);
   const imgRef = useRef(null);
   const fileInputRef = useRef(null);
+  const fileInput2Ref = useRef(null);
   const originalFileRef = useRef(null);
 
   // Gestione articoli
@@ -200,6 +206,7 @@ export default function Admin() {
       sourceUrl: article.sourceUrl || "",
       journalist: article.journalist || "",
       video: article.video || null,
+      imageUrl2: article.imageUrl2 || "",
     });
   };
 
@@ -213,6 +220,8 @@ export default function Admin() {
         ...(editData.title !== undefined && { title: ripulisciTesto(editData.title) }),
         ...(editData.excerpt !== undefined && { excerpt: ripulisciTesto(editData.excerpt) }),
         ...(editData.content !== undefined && { content: ripulisciTesto(editData.content) }),
+        // Campo vuoto significa "nessuna seconda foto", non stringa vuota
+        ...(editData.imageUrl2 !== undefined && { imageUrl2: editData.imageUrl2 || null }),
       };
       await updateDoc(doc(db, "articles", id), ripuliti);
       setArticles((prev) =>
@@ -269,6 +278,59 @@ export default function Admin() {
     }
   };
 
+  /* Carica la seconda foto dell'articolo.
+
+     Nessun ritaglio: la copertina deve stare in 16:9 perché fa da
+     testata, questa invece compare dentro l'articolo e va bene con le
+     proporzioni originali, verticali comprese.
+     Il controllo sul tipo e sulla dimensione avviene qui: Cloudinary
+     rifiuterebbe comunque i file troppo grandi, ma con un messaggio
+     tecnico in inglese che non aiuterebbe nessuno. */
+  const caricaImmagineSemplice = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return null;
+
+    if (!file.type.startsWith("image/")) {
+      showToast("Il file scelto non è un'immagine", "danger");
+      e.target.value = "";
+      return null;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      showToast(
+        `Immagine troppo grande (${(file.size / 1024 / 1024).toFixed(1)} MB). Massimo 10 MB.`,
+        "danger"
+      );
+      e.target.value = "";
+      return null;
+    }
+
+    setImage2Uploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", UPLOAD_PRESET);
+      formData.append("folder", "netflaxt/articles");
+      const res = await axios.post(
+        `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
+        formData
+      );
+      showToast("Foto caricata", "success");
+      return res.data.secure_url;
+    } catch (err) {
+      console.error("Errore upload seconda foto:", err);
+      showToast("Caricamento non riuscito. Riprova.", "danger");
+      return null;
+    } finally {
+      setImage2Uploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleSecondaImmagine = async (e) => {
+    const url = await caricaImmagineSemplice(e);
+    if (url) setImageUrl2(url);
+  };
+
   const handleCropSkip = async () => {
     setShowCrop(false);
     setImageUploading(true);
@@ -302,6 +364,8 @@ export default function Admin() {
            pagina. Vedi utils/testoArticolo.js. */
         content: ripulisciTesto(content),
         category, imageUrl,
+        // Seconda foto: null se non messa, cosi la pagina sa che non c-e
+        imageUrl2: imageUrl2 || null,
         video: video || null,
         featured, source, sourceUrl, journalist,
         author: "Mattia", date: Timestamp.now(),
@@ -321,7 +385,7 @@ export default function Admin() {
         avvisati = false;
       }
 
-      setTitle(""); setExcerpt(""); setContent(""); setImageUrl("");
+      setTitle(""); setExcerpt(""); setContent(""); setImageUrl(""); setImageUrl2("");
       setSource(""); setSourceUrl(""); setJournalist(""); setFeatured(false);
       setVideo(null);
       showToast(
@@ -648,9 +712,74 @@ export default function Admin() {
                 </Field>
               </div>
 
+              {/* Seconda foto — compare in fondo all'articolo */}
+              <div className="p-7 border-b border-border space-y-5">
+                <SectionLabel n="3" label="Seconda foto (opzionale)" />
+                <Field label="Foto in fondo all'articolo">
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => fileInput2Ref.current?.click()}
+                      disabled={image2Uploading}
+                      className="w-full py-4 rounded-md border border-dashed border-border hover:border-accent/60 hover:bg-bg-elevated text-text-secondary hover:text-text-primary transition disabled:opacity-60"
+                    >
+                      {image2Uploading
+                        ? "Caricamento in corso…"
+                        : imageUrl2
+                        ? "Sostituisci la foto"
+                        : "Scegli una foto dal computer"}
+                    </button>
+                    <input
+                      ref={fileInput2Ref}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleSecondaImmagine}
+                      className="hidden"
+                    />
+
+                    {imageUrl2 && !image2Uploading && (
+                      <div className="relative rounded-md overflow-hidden border border-border bg-bg-elevated">
+                        <img
+                          src={imageUrl2}
+                          alt="anteprima seconda foto"
+                          className="w-full max-h-64 object-contain bg-bg-base"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setImageUrl2("")}
+                          className="absolute top-2 right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition text-xs font-bold"
+                          aria-label="Rimuovi la seconda foto"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-px bg-border" />
+                      <span className="text-xs text-text-muted uppercase tracking-wider">
+                        oppure inserisci URL
+                      </span>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+                    <input
+                      type="url"
+                      value={imageUrl2}
+                      onChange={(e) => setImageUrl2(e.target.value)}
+                      placeholder="https://..."
+                      className="adminInput"
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-text-muted">
+                    Appare in fondo all'articolo, subito prima del riquadro della fonte.
+                    Mantiene le proporzioni originali: va bene anche verticale.
+                  </p>
+                </Field>
+              </div>
+
               {/* Sezione 2 */}
               <div className="p-7 border-b border-border space-y-5">
-                <SectionLabel n="3" label="Contenuto completo" />
+                <SectionLabel n="4" label="Contenuto completo" />
                 <Field label="Corpo dell'articolo">
                   <div className="rounded-md border border-border overflow-hidden bg-bg-elevated focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/15 transition">
                     <ReactQuill
@@ -670,7 +799,7 @@ export default function Admin() {
 
               {/* Sezione 3 */}
               <div className="p-7 border-b border-border space-y-5">
-                <SectionLabel n="4" label="Fonte e attribuzione" />
+                <SectionLabel n="5" label="Fonte e attribuzione" />
                 <Field label="Giornalista / Fonte">
                   <JournalistSelect value={journalist} onChange={setJournalist} />
                 </Field>
@@ -698,7 +827,7 @@ export default function Admin() {
 
               {/* Sezione 4 */}
               <div className="p-7 space-y-5 bg-bg-elevated/40">
-                <SectionLabel n="5" label="Opzioni" />
+                <SectionLabel n="6" label="Opzioni" />
                 <label className="flex items-start gap-3 cursor-pointer group">
                   <input
                     type="checkbox"
@@ -1196,6 +1325,48 @@ function ArticleRow({
             <VideoUploader
               value={editData.video}
               onChange={(v) => setEditData({ ...editData, video: v })}
+            />
+          </div>
+
+          {/* Seconda foto, anche in modifica: senza questo blocco si
+              potrebbe solo metterla alla pubblicazione e mai cambiarla
+              o toglierla dopo. */}
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-text-secondary mb-2">
+              Seconda foto (in fondo all'articolo)
+            </label>
+            {editData.imageUrl2 ? (
+              <div className="relative rounded-md overflow-hidden border border-border bg-bg-elevated mb-2">
+                <img
+                  src={editData.imageUrl2}
+                  alt="anteprima seconda foto"
+                  className="w-full max-h-48 object-contain bg-bg-base"
+                />
+                <button
+                  type="button"
+                  onClick={() => setEditData({ ...editData, imageUrl2: "" })}
+                  className="absolute top-2 right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition text-xs font-bold"
+                  aria-label="Rimuovi la seconda foto"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : null}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={async (e) => {
+                const url = await caricaImmagineSemplice(e);
+                if (url) setEditData((d) => ({ ...d, imageUrl2: url }));
+              }}
+              className="block w-full text-xs text-text-secondary file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:bg-bg-elevated file:text-text-primary file:text-xs file:font-semibold hover:file:bg-border cursor-pointer"
+            />
+            <input
+              type="url"
+              value={editData.imageUrl2 || ""}
+              onChange={(e) => setEditData({ ...editData, imageUrl2: e.target.value })}
+              placeholder="oppure incolla un link https://..."
+              className="adminInput mt-2"
             />
           </div>
           <label className="flex items-center gap-2 cursor-pointer">
