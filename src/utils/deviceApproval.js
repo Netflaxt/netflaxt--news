@@ -32,6 +32,24 @@ import { getDeviceId } from "./devices";
 
 const SERVIZIO = "https://netflaxt-live-poller.netflaxt.workers.dev";
 
+/* Assicura che sulla scheda dell'account ci sia l'indirizzo email.
+
+   È l'indirizzo a cui va spedita la conferma: se manca, il servizio non
+   sa a chi scrivere e l'accesso resta bloccato per sempre, senza che
+   l'interessato possa farci nulla. Su alcuni account non c'era (visto
+   con la diagnostica del 24/08/2026), probabilmente creati prima che la
+   scheda utente venisse compilata. Scriverlo qui ripara quelli vecchi
+   al primo accesso: in questo momento l'utente è riconosciuto, quindi
+   l'indirizzo arriva da Google o da Firebase, non da chi sta digitando. */
+async function assicuraIndirizzo(user) {
+  if (!user?.email) return;
+  try {
+    await setDoc(doc(db, "users", user.uid), { email: user.email }, { merge: true });
+  } catch {
+    /* se non riesce, l'invio fallirà con un motivo chiaro nel registro */
+  }
+}
+
 /** Esito del controllo: "ok" | "attesa" | "errore" */
 export async function verificaDispositivo(user) {
   if (!user?.uid) return { esito: "ok" };
@@ -58,8 +76,16 @@ export async function verificaDispositivo(user) {
         { approvalToken: token, revoked: false, richiestoIl: serverTimestamp() },
         { merge: true }
       );
-      await inviaEmailApprovazione(user.uid, deviceId);
     }
+    /* L'email va mandata a OGNI tentativo di accesso, anche se una
+       richiesta era già in attesa. Prima l'invio avveniva solo insieme
+       alla creazione del codice: chi aveva già un tentativo aperto non
+       riceveva più nulla e restava bloccato sulla schermata di attesa,
+       costretto a premere "Rimanda" a mano (24/08/2026).
+       Chi sta accedendo si aspetta l'email adesso, non quella di ieri —
+       e comunque arriva solo al proprietario dell'account. */
+    await assicuraIndirizzo(user);
+    await inviaEmailApprovazione(user.uid, deviceId);
     return { esito: "attesa", token };
   }
 
@@ -82,6 +108,7 @@ export async function verificaDispositivo(user) {
     { merge: true }
   );
 
+  await assicuraIndirizzo(user);
   await inviaEmailApprovazione(user.uid, deviceId);
   return { esito: "attesa", token };
 }

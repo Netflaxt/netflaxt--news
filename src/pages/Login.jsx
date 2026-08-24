@@ -5,6 +5,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   updateProfile,
   sendEmailVerification,
   sendPasswordResetEmail,
@@ -28,6 +30,26 @@ import { ShieldIcon } from "../components/icons";
    - 2° login Google: matching tra email loggata e flag in localStorage →
      se ok azzera requireEmailConfirm e fa entrare. */
 const EMAIL_CONFIRMED_LS_KEY = "netflaxt:emailConfirmed";
+
+/* Quando conviene abbandonare la finestra di Google e passare
+   all'accesso a pagina intera.
+
+   Sono i casi in cui la finestra NON ha funzionato, non quelli in cui
+   l'utente ha scelto di annullare. Una finestra che si chiude da sola
+   in meno di due secondi non è una scelta di nessuno: nessuno fa in
+   tempo a leggere, figurarsi a scegliere un account. È il guasto
+   segnalato più volte ("si apre, non carica e si chiude", "alla prima
+   volta non fa niente, alla seconda va"): la finestra dipende da troppe
+   cose fuori dal nostro controllo — blocchi popup, estensioni, il
+   collegamento con Google non ancora pronto al primo click. */
+function ripiegoNecessario(err, durataMs) {
+  const c = err?.code;
+  if (c === "auth/popup-blocked") return true;
+  if (c === "auth/cancelled-popup-request") return true;
+  if (c === "auth/internal-error") return true;
+  if (c === "auth/popup-closed-by-user") return durataMs < 2000;
+  return false;
+}
 
 const IG_POPUP_LS_KEY = "netflaxt_ig_popup_dismissed";
 const IG_URL = "https://www.instagram.com/netflaxt";
@@ -64,11 +86,12 @@ export default function Login() {
   /* Prepara il terreno per l'accesso con Google.
 
      Appena la pagina si apre, il "custode" che fa funzionare il sito
-     offline si sta ancora avviando: se la finestra di Google parte
-     proprio in quell'istante, la risposta rischia di perdersi e il sito
-     resta a caricare all'infinito (capitava sempre al primo tentativo).
+     offline si sta ancora avviando: una finestra di Google aperta
+     proprio in quell'istante ha più probabilità di non funzionare.
+     Non è una garanzia — se fallisce comunque c'è il ripiego a pagina
+     intera — ma riduce le volte in cui serve ricorrervi.
 
-     L'attesa va fatta QUI, mentre l'utente legge la pagina — non al
+     L'attesa va fatta QUI, mentre l'utente legge la pagina, e non al
      momento del click: i browser aprono una finestra solo se il click è
      appena avvenuto, e un'attesa in mezzo la farebbe chiudere subito. */
   useEffect(() => {
@@ -270,30 +293,38 @@ export default function Login() {
     }
   };
 
-  const handleGoogle = async () => {
-    setError("");
-    setLoading(true);
+  /* Avvia l'accesso con Google.
 
-    /* Se la finestra di Google non torna indietro (chiusa a metà, rete
-       che cade), il pulsante resterebbe a caricare all'infinito senza
-       spiegazioni. Dopo un minuto lo sblocchiamo dicendo cosa fare. */
-    const sbloccoDiSicurezza = setTimeout(() => {
-      setLoading(false);
-      setError(
-        "La finestra di Google non ha risposto. Chiudila e riprova, oppure accedi con email e password."
-      );
-    }, 60000);
-
+     Prova prima con la finestra di Google, più comoda perché non fa
+     perdere la pagina. Se la finestra non funziona si ripiega
+     sull'accesso a pagina intera: è più lento, ma nessun browser lo
+     blocca, quindi l'accesso riesce comunque invece di fallire e
+     costringere a riprovare.
+     Restituisce le credenziali, oppure null se si sta uscendo dalla
+     pagina per andare su Google (in quel caso si prosegue al ritorno). */
+  const avviaAccessoGoogle = async () => {
+    const apertoIl = Date.now();
     try {
       /* ⚠️ NON mettere attese prima di questa riga.
          I browser aprono una finestra solo se il click dell'utente è
          appena avvenuto: qualsiasi attesa qui in mezzo fa "scadere" il
          click e la finestra viene chiusa subito dopo essersi aperta
          (provato il 24/08/2026: così l'accesso smetteva del tutto di
-         funzionare). La preparazione va fatta al caricamento della
-         pagina — vedi l'effetto più in alto. */
-      const cred = await signInWithPopup(auth, googleProvider);
-      const userRef = doc(db, "users", cred.user.uid);
+         funzionare). */
+      return await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      if (!ripiegoNecessario(err, Date.now() - apertoIl)) throw err;
+      console.warn("Finestra Google non utilizzabile, passo alla pagina intera:", err?.code);
+      await signInWithRedirect(auth, googleProvider);
+      return null;
+    }
+  };
+
+  /* Cosa succede DOPO che Google ci ha riconosciuti.
+     Sta in una funzione a parte perché ci si arriva da due strade: la
+     finestra di Google e il ritorno dall'accesso a pagina intera. */
+  const completaAccessoGoogle = async (cred) => {
+    const userRef = doc(db, "users", cred.user.uid);
       const userSnap = await getDoc(userRef);
       const userData = userSnap.exists() ? userSnap.data() : null;
 
@@ -309,7 +340,7 @@ export default function Login() {
             // richiede un click, perche il browser blocca le finestre
             // di accesso aperte senza un gesto dell-utente.
             conGoogle: true,
-            rientra: () => signInWithPopup(auth, googleProvider),
+            rientra: avviaAccessoGoogle,
           });
           return;
         }
@@ -369,6 +400,26 @@ export default function Login() {
 
       await signOut(auth);
       setVerifiedScreen(true);
+  };
+
+  const handleGoogle = async () => {
+    setError("");
+    setLoading(true);
+
+    /* Se Google non torna indietro (finestra chiusa a metà, rete che
+       cade), il pulsante resterebbe a caricare all'infinito senza
+       spiegazioni. Dopo un minuto lo sblocchiamo dicendo cosa fare. */
+    const sbloccoDiSicurezza = setTimeout(() => {
+      setLoading(false);
+      setError(
+        "Google non ha risposto. Riprova, oppure accedi con email e password."
+      );
+    }, 60000);
+
+    try {
+      const cred = await avviaAccessoGoogle();
+      if (!cred) return; // si sta passando alla pagina di Google
+      await completaAccessoGoogle(cred);
     } catch (err) {
       setError(mapFirebaseError(err));
     } finally {
@@ -376,6 +427,38 @@ export default function Login() {
       setLoading(false);
     }
   };
+
+  /* Ritorno dall'accesso a pagina intera.
+
+     Quando si ripiega su quella strada il sito viene lasciato e poi
+     riaperto da Google: senza questo controllo l'utente tornerebbe alla
+     schermata di accesso come se non fosse successo nulla, pur essendo
+     ormai riconosciuto. Qui riprendiamo esattamente da dove eravamo. */
+  useEffect(() => {
+    let abbandonato = false;
+    (async () => {
+      let cred;
+      try {
+        cred = await getRedirectResult(auth);
+      } catch (err) {
+        if (!abbandonato) setError(mapFirebaseError(err));
+        return;
+      }
+      if (!cred || abbandonato) return; // arrivo normale, non da Google
+      setLoading(true);
+      try {
+        await completaAccessoGoogle(cred);
+      } catch (err) {
+        if (!abbandonato) setError(mapFirebaseError(err));
+      } finally {
+        if (!abbandonato) setLoading(false);
+      }
+    })();
+    return () => {
+      abbandonato = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleForgotPassword = async (e) => {
     e.preventDefault();
