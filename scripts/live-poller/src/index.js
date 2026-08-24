@@ -17,7 +17,11 @@
 
 import { processPushQueue, diagnosticaPush, inviaProva } from "./push.js";
 import { processNewsletter, disiscrivi } from "./newsletter.js";
-import { richiediApprovazione, confermaDispositivo } from "./accessi.js";
+import {
+  richiediApprovazione,
+  confermaDispositivo,
+  statoDispositivo,
+} from "./accessi.js";
 
 export default {
   async scheduled(event, env, ctx) {
@@ -58,6 +62,18 @@ export default {
           q.get("device")
         );
         return json(esito, esito.ok ? 200 : 400, req);
+      }
+      // La schermata di attesa chiede periodicamente se il dispositivo
+      // e stato confermato, per sbloccarsi da sola.
+      if (q.get("statoDispositivo")) {
+        const auth = await getAccessToken(env);
+        const esito = await statoDispositivo(
+          auth,
+          { leggiDoc, fval },
+          q.get("statoDispositivo"),
+          q.get("device")
+        );
+        return json(esito, 200, req);
       }
       if (q.get("confermaAccesso")) {
         const auth = await getAccessToken(env);

@@ -99,11 +99,20 @@ export async function inviaEmailApprovazione(uid, deviceId = getDeviceId()) {
   }
 }
 
-/** Il dispositivo è stato confermato nel frattempo? (per lo sblocco automatico) */
+/** Il dispositivo è stato confermato nel frattempo? (per lo sblocco automatico)
+
+   Passa dal servizio e non da una lettura diretta: mentre si aspetta la
+   conferma l'utente è disconnesso, e da disconnesso il sito non può
+   leggere i dati del proprio account. Facendolo direttamente il
+   controllo falliva sempre in silenzio e la schermata di attesa non si
+   sbloccava mai (problema riscontrato il 24/08/2026). */
 export async function dispositivoApprovato(uid) {
   try {
-    const snap = await getDoc(doc(db, "users", uid, "devices", getDeviceId()));
-    return snap.exists() && snap.data()?.approved !== false;
+    const res = await fetch(
+      `${SERVIZIO}/?statoDispositivo=${encodeURIComponent(uid)}&device=${encodeURIComponent(getDeviceId())}`
+    );
+    const dati = await res.json().catch(() => ({}));
+    return dati.approvato === true;
   } catch {
     return false;
   }

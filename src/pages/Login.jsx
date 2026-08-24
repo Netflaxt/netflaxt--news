@@ -204,8 +204,17 @@ export default function Login() {
         // viene confermato dall'email dell'account.
         const controllo = await verificaDispositivo(cred.user);
         if (controllo.esito === "attesa") {
+          const credenziali = { email, password };
           await signOut(auth);
-          setAttesaDispositivo({ uid: cred.user.uid, email: cred.user.email });
+          setAttesaDispositivo({
+            uid: cred.user.uid,
+            email: cred.user.email,
+            // Rientro automatico appena arriva la conferma: le
+            // credenziali restano solo in memoria, per il tempo
+            // dell-attesa, e non vengono mai salvate da nessuna parte.
+            rientra: () =>
+              signInWithEmailAndPassword(auth, credenziali.email, credenziali.password),
+          });
           return;
         }
         navigate("/");
@@ -260,7 +269,15 @@ export default function Login() {
         const controllo = await verificaDispositivo(cred.user);
         if (controllo.esito === "attesa") {
           await signOut(auth);
-          setAttesaDispositivo({ uid: cred.user.uid, email: cred.user.email });
+          setAttesaDispositivo({
+            uid: cred.user.uid,
+            email: cred.user.email,
+            // Con Google non abbiamo credenziali da riusare: il rientro
+            // richiede un click, perche il browser blocca le finestre
+            // di accesso aperte senza un gesto dell-utente.
+            conGoogle: true,
+            rientra: () => signInWithPopup(auth, googleProvider),
+          });
           return;
         }
         navigate("/");
@@ -350,9 +367,14 @@ export default function Login() {
     return (
       <AttesaConferma
         dati={attesaDispositivo}
-        onSbloccato={() => {
+        onEntrato={() => {
           setAttesaDispositivo(null);
-          setSuccess("Dispositivo confermato! Adesso puoi accedere.");
+          navigate("/");
+        }}
+        onFallito={(messaggio) => {
+          setAttesaDispositivo(null);
+          setSuccess("Dispositivo confermato! Accedi pure.");
+          if (messaggio) setError(messaggio);
         }}
       />
     );
@@ -965,29 +987,54 @@ function GoogleIcon({ className = "" }) {
    o rifare l'accesso. Il pulsante "Rimanda" copre il caso più comune,
    cioè l'email finita nello spam o mai arrivata.
    ───────────────────────────────────────────────────────────── */
-function AttesaConferma({ dati, onSbloccato }) {
-  const [rinvio, setRinvio] = useState("fermo"); // fermo | corso | fatto | errore
+function AttesaConferma({ dati, onEntrato, onFallito }) {
+  const [rinvio, setRinvio] = useState('fermo'); // fermo | corso | fatto | errore
+  const [confermato, setConfermato] = useState(false);
+  const [entrando, setEntrando] = useState(false);
 
-  // Controlla periodicamente se nel frattempo è stato confermato
+  // Controlla ogni pochi secondi se il link nell'email e stato aperto.
   useEffect(() => {
     let vivo = true;
     const t = setInterval(async () => {
       const ok = await dispositivoApprovato(dati.uid);
-      if (ok && vivo) {
-        clearInterval(t);
-        onSbloccato();
+      if (!ok || !vivo) return;
+      clearInterval(t);
+      setConfermato(true);
+
+      // Con email e password rientriamo da soli: l'utente non deve
+      // ridigitare nulla ne accorgersi del passaggio.
+      if (dati.rientra && !dati.conGoogle) {
+        setEntrando(true);
+        try {
+          await dati.rientra();
+          if (vivo) onEntrato();
+        } catch (e) {
+          if (vivo) onFallito(e?.message ? null : null);
+        }
       }
-    }, 4000);
+    }, 3000);
     return () => {
       vivo = false;
       clearInterval(t);
     };
-  }, [dati.uid, onSbloccato]);
+  }, [dati, onEntrato, onFallito]);
+
+  const entraConGoogle = async () => {
+    setEntrando(true);
+    try {
+      await dati.rientra();
+      onEntrato();
+    } catch {
+      onFallito(null);
+    } finally {
+      setEntrando(false);
+    }
+  };
 
   const rimanda = async () => {
-    setRinvio("corso");
+    setRinvio('corso');
     const ok = await inviaEmailApprovazione(dati.uid);
-    setRinvio(ok ? "fatto" : "errore");
+    setRinvio(ok ? 'fatto' : 'errore');
   };
 
   return (
@@ -997,56 +1044,83 @@ function AttesaConferma({ dati, onSbloccato }) {
       </div>
 
       <div className="w-full max-w-md text-center">
-        <div className="inline-flex w-14 h-14 rounded-xl bg-accent/10 border border-accent/30 items-center justify-center mb-5">
-          <ShieldIcon className="w-6 h-6 text-accent" />
-        </div>
-
-        <h1
-          className="text-4xl sm:text-5xl text-text-primary leading-none"
-          style={{ fontFamily: "var(--font-display)" }}
+        <div
+          className={`inline-flex w-14 h-14 rounded-xl items-center justify-center mb-5 border ${
+            confermato
+              ? "bg-success/10 border-success/30"
+              : "bg-accent/10 border-accent/30"
+          }`}
         >
-          CONFERMA L'ACCESSO
-        </h1>
-
-        <p className="mt-4 text-text-secondary text-sm leading-relaxed">
-          Stai entrando da un dispositivo che non abbiamo mai visto. Per
-          sicurezza ti abbiamo mandato un'email a{" "}
-          <strong className="text-text-primary">{dati.email}</strong>: aprila e
-          clicca il pulsante di conferma.
-        </p>
-
-        <div className="mt-6 p-3 rounded-lg bg-bg-elevated border border-border text-xs text-text-muted">
-          Questa pagina si sblocca da sola appena confermi. Puoi lasciarla
-          aperta.
+          <ShieldIcon
+            className={`w-6 h-6 ${confermato ? "text-success" : "text-accent"}`}
+          />
         </div>
 
-        <div className="mt-6">
-          {rinvio === "fatto" ? (
-            <p className="text-xs text-success font-semibold">
-              ✓ Email rimandata. Controlla anche nello spam.
+        {confermato ? (
+          <>
+            <h1 className="text-4xl sm:text-5xl text-text-primary leading-none" style={{ fontFamily: 'var(--font-display)' }}>
+              ACCESSO CONFERMATO
+            </h1>
+            <p className="mt-4 text-text-secondary text-sm">
+              {dati.conGoogle
+                ? 'Il dispositivo e stato autorizzato: entra pure.'
+                : entrando
+                ? 'Ti sto facendo entrare…'
+                : 'Un attimo…'}
             </p>
-          ) : (
-            <button
-              onClick={rimanda}
-              disabled={rinvio === "corso"}
-              className="px-5 py-2.5 rounded-md bg-bg-elevated border border-border text-text-primary text-xs font-bold uppercase tracking-wider hover:border-accent/40 transition disabled:opacity-60"
-            >
-              {rinvio === "corso" ? "Invio…" : "Non è arrivata? Rimanda"}
-            </button>
-          )}
-          {rinvio === "errore" && (
-            <p className="mt-2 text-xs text-error">
-              Invio non riuscito. Riprova fra poco.
+            {dati.conGoogle && (
+              <button
+                onClick={entraConGoogle}
+                disabled={entrando}
+                className="mt-7 px-6 py-3 rounded-md bg-accent text-white text-xs font-bold uppercase tracking-wider hover:bg-accent-hover transition disabled:opacity-60"
+              >
+                {entrando ? 'Attendere…' : 'Entra ora'}
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <h1 className="text-4xl sm:text-5xl text-text-primary leading-none" style={{ fontFamily: 'var(--font-display)' }}>
+              CONFERMA L'ACCESSO
+            </h1>
+            <p className="mt-4 text-text-secondary text-sm leading-relaxed">
+              Stai entrando da un dispositivo che non abbiamo mai visto. Per
+              sicurezza ti abbiamo mandato un'email a{' '}
+              <strong className="text-text-primary">{dati.email}</strong>: aprila e
+              clicca il pulsante di conferma.
             </p>
-          )}
-        </div>
+
+            <div className="mt-6 p-3 rounded-lg bg-bg-elevated border border-border text-xs text-text-muted">
+              Questa pagina si sblocca da sola appena confermi. Puoi lasciarla
+              aperta.
+            </div>
+
+            <div className="mt-6">
+              {rinvio === 'fatto' ? (
+                <p className="text-xs text-success font-semibold">
+                  Email rimandata. Controlla anche nello spam.
+                </p>
+              ) : (
+                <button
+                  onClick={rimanda}
+                  disabled={rinvio === 'corso'}
+                  className="px-5 py-2.5 rounded-md bg-bg-elevated border border-border text-text-primary text-xs font-bold uppercase tracking-wider hover:border-accent/40 transition disabled:opacity-60"
+                >
+                  {rinvio === 'corso' ? 'Invio…' : 'Non e arrivata? Rimanda'}
+                </button>
+              )}
+              {rinvio === 'errore' && (
+                <p className="mt-2 text-xs text-error">
+                  Invio non riuscito. Riprova fra poco.
+                </p>
+              )}
+            </div>
+          </>
+        )}
 
         <div className="mt-8">
-          <Link
-            to="/"
-            className="text-xs uppercase tracking-wider text-text-muted hover:text-accent transition"
-          >
-            ← Torna alla home
+          <Link to="/" className="text-xs uppercase tracking-wider text-text-muted hover:text-accent transition">
+            Torna alla home
           </Link>
         </div>
       </div>

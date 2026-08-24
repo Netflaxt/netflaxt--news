@@ -99,6 +99,22 @@ export async function confermaDispositivo(auth, helpers, token, uid) {
   return { ok: true };
 }
 
+/* Questo dispositivo è stato confermato?
+
+   Serve alla schermata di attesa per sbloccarsi da sola. Deve passare da
+   qui perché in quel momento l'utente è disconnesso, e da disconnesso il
+   sito non può leggere nulla del proprio account: il controllo fallirebbe
+   in silenzio e la schermata resterebbe ferma per sempre.
+   Risponde solo sì/no su un dispositivo di cui si conoscono già account e
+   identificativo: nessuna informazione in più. */
+export async function statoDispositivo(auth, helpers, uid, deviceId) {
+  const { leggiDoc, fval } = helpers;
+  if (!uid || !deviceId) return { approvato: false };
+  const d = await leggiDoc(auth, `users/${uid}/devices/${deviceId}`);
+  if (!d?.fields) return { approvato: false };
+  return { approvato: fval(d.fields.approved) !== false };
+}
+
 function emailApprovazione({ nome, descrizione, token, uid }) {
   const link = `${SITO}/approva?t=${encodeURIComponent(token)}&u=${encodeURIComponent(uid)}`;
   const saluto = nome ? `Ciao ${escapeHtml(nome)},` : "Ciao,";
