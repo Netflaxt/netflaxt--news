@@ -41,20 +41,36 @@ function Avatar({ photoURL, displayName, size = "md" }) {
 /* Contatore che sale da 0 al valore (eased). Reduced-motion: il giro è
    istantaneo (rAF singolo) → mostra subito il numero finale. */
 function CountUp({ value }) {
+  const finale = Number(value) || 0;
   const [n, setN] = useState(0);
+
   useEffect(() => {
-    let raf;
-    const start = performance.now();
     const dur = 900;
+    let raf;
+
+    const start = performance.now();
     const tick = (t) => {
       const p = Math.min(1, (t - start) / dur);
       const eased = 1 - Math.pow(1 - p, 3);
-      setN(Math.round((value || 0) * eased));
+      setN(Math.round(finale * eased));
       if (p < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [value]);
+
+    /* Rete di sicurezza: il conteggio sale grazie alle animazioni del
+       browser, che però non girano se la scheda è in secondo piano o se
+       la finestra non viene disegnata. In quei casi il numero resterebbe
+       a ZERO per sempre — e sul podio è proprio il punteggio del primo
+       in classifica. Passato il tempo dell'animazione, il valore giusto
+       viene messo comunque. */
+    const sicurezza = setTimeout(() => setN(finale), dur + 400);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(sicurezza);
+    };
+  }, [finale]);
+
   return <>{n}</>;
 }
 
