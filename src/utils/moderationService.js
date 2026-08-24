@@ -3,10 +3,25 @@
    ───────────────────────────────────────────────────────────────
    Tutto Firestore. Niente backend.
 
+   ⚠️ QUESTI DATI NON VANNO NEL PROFILO (`users/{uid}`).
+   Il profilo è leggibile pubblicamente: serve a mostrare nome e foto
+   accanto a messaggi e commenti. Tenere lì il motivo di una sanzione
+   significava renderlo consultabile da chiunque — sono informazioni
+   sul comportamento di una persona, non un dato da vetrina.
+   Da qui la collection separata, leggibile solo dall'interessato e
+   dall'amministratore (spostati il 24/08/2026).
+
+   ⚠️ LIMITE NOTO, da tenere presente: la sanzione la scrive il browser
+   di chi ha commesso la violazione, perché senza un server non c'è
+   nessun altro che possa farlo. Chi ha competenze tecniche può quindi
+   annullarsi la sospensione da solo. Spostare i dati non cambia questo:
+   è una conseguenza del non avere un server, e per risolverlo servirebbe
+   il piano a pagamento di Firebase.
+
    Collezioni usate:
    ───────────────────
-   • users/{uid}
-       Campi aggiunti dal sistema moderazione:
+   • moderazione/{uid}
+       Stato di moderazione dell'utente:
          - banCount: number              (0|1|2|3 — 4 = disabilitato)
          - suspendedUntil: Timestamp|null
          - suspensionReason: string
@@ -77,8 +92,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
    ─────────────────────────────────────────────────────────────── */
 export async function getModerationStatus(uid) {
   if (!uid) return defaultStatus();
-  const userRef = doc(db, "users", uid);
-  const snap = await getDoc(userRef);
+  const modRef = doc(db, "moderazione", uid);
+  const snap = await getDoc(modRef);
   const data = snap.exists() ? snap.data() : {};
 
   let banCount = data.banCount || 0;
@@ -99,7 +114,7 @@ export async function getModerationStatus(uid) {
     now - lastViolationAt.getTime() > RESET_AFTER_DAYS * DAY_MS
   ) {
     try {
-      await updateDoc(userRef, {
+      await updateDoc(modRef, {
         banCount: 0,
         lastResetCheckedAt: serverTimestamp(),
       });
@@ -147,15 +162,15 @@ function defaultStatus() {
 export async function applyViolation(uid, violation, recentMessages = []) {
   if (!uid) throw new Error("uid mancante");
 
-  const userRef = doc(db, "users", uid);
-  const snap = await getDoc(userRef);
+  const modRef = doc(db, "moderazione", uid);
+  const snap = await getDoc(modRef);
   const currentCount = snap.exists() ? snap.data().banCount || 0 : 0;
   const nextCount = currentCount + 1;
 
   // 4ª violazione → account disabilitato (irrevocabile lato app)
   if (nextCount > MAX_BAN_COUNT_BEFORE_DISABLE) {
     await setDoc(
-      userRef,
+      modRef,
       {
         banCount: nextCount,
         accountDisabled: true,
@@ -195,7 +210,7 @@ export async function applyViolation(uid, violation, recentMessages = []) {
   // violazione scatta la sospensione vera.
   if (days <= 0) {
     await setDoc(
-      userRef,
+      modRef,
       {
         banCount: nextCount,
         suspendedUntil: null,
@@ -221,7 +236,7 @@ export async function applyViolation(uid, violation, recentMessages = []) {
   const endAt = new Date(startAt.getTime() + days * DAY_MS);
 
   await setDoc(
-    userRef,
+    modRef,
     {
       banCount: nextCount,
       suspendedUntil: Timestamp.fromDate(endAt),
@@ -352,10 +367,10 @@ export async function resolveAppeal(appealId, decision, adminNote = "") {
 
   if (decision === "accepted") {
     // Annulla sospensione + decrementa banCount + riabilita account se 4ª
-    const userRef = doc(db, "users", appeal.uid);
-    const userSnap = await getDoc(userRef);
-    const currentCount = userSnap.exists() ? userSnap.data().banCount || 0 : 0;
-    await updateDoc(userRef, {
+    const modRef = doc(db, "moderazione", appeal.uid);
+    const modSnap = await getDoc(modRef);
+    const currentCount = modSnap.exists() ? modSnap.data().banCount || 0 : 0;
+    await setDoc(modRef, {
       banCount: Math.max(0, currentCount - 1),
       suspendedUntil: null,
       suspensionStartAt: null,
@@ -364,7 +379,7 @@ export async function resolveAppeal(appealId, decision, adminNote = "") {
       flaggedMessages: [],
       accountDisabled: false,
       accountDisabledAt: null,
-    });
+    }, { merge: true });
   }
 
   return true;

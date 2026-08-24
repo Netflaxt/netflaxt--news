@@ -16,6 +16,7 @@
 import { db } from "../firebase/firebase";
 import {
   doc,
+  getDoc,
   setDoc,
   updateDoc,
   deleteField,
@@ -48,5 +49,57 @@ export async function salvaIndirizzoAccount(uid, email) {
     await updateDoc(doc(db, "users", uid), { email: deleteField() });
   } catch {
     /* il profilo non esiste ancora, oppure era già pulito */
+  }
+}
+
+/* Campi che il sistema di moderazione teneva nel profilo pubblico. */
+const CAMPI_MODERAZIONE = [
+  "banCount",
+  "suspendedUntil",
+  "suspensionStartAt",
+  "suspensionReason",
+  "suspensionViolationType",
+  "flaggedMessages",
+  "lastViolationAt",
+  "accountDisabled",
+  "accountDisabledAt",
+  "lastResetCheckedAt",
+];
+
+/**
+ * Sposta lo stato di moderazione fuori dal profilo pubblico.
+ *
+ * Fino al 24/08/2026 motivo della sanzione, numero di ban e messaggi
+ * segnalati stavano nel profilo, che chiunque poteva leggere. Ora vivono
+ * in `moderazione/{uid}`, dove leggono solo l'interessato e
+ * l'amministratore.
+ *
+ * Trasferire i dati esistenti è indispensabile: senza, una sospensione
+ * in corso sparirebbe nel nulla al primo accesso della persona
+ * sanzionata. Avviene una volta sola per ciascuno, e in silenzio.
+ */
+export async function migraStatoModerazione(uid) {
+  if (!uid) return;
+  try {
+    const gia = await getDoc(doc(db, "moderazione", uid));
+    if (gia.exists()) return; // già spostato
+
+    const profilo = await getDoc(doc(db, "users", uid));
+    if (!profilo.exists()) return;
+    const p = profilo.data();
+
+    const daSpostare = {};
+    const daCancellare = {};
+    for (const campo of CAMPI_MODERAZIONE) {
+      if (p[campo] === undefined) continue;
+      daSpostare[campo] = p[campo];
+      daCancellare[campo] = deleteField();
+    }
+    if (!Object.keys(daSpostare).length) return;
+
+    await setDoc(doc(db, "moderazione", uid), daSpostare, { merge: true });
+    await updateDoc(doc(db, "users", uid), daCancellare);
+  } catch (e) {
+    console.warn("Stato di moderazione non spostato:", e?.message);
   }
 }

@@ -75,9 +75,28 @@ export default function AdminUsersTab({ onToast }) {
       (e) => console.warn("Contatti utenti non leggibili:", e?.message)
     );
 
+    /* Anche lo stato di moderazione è uscito dal profilo pubblico:
+       motivo della sanzione, numero di ban e messaggi segnalati erano
+       leggibili da chiunque. Qui vengono riaccostati al profilo, così
+       l'elenco e i filtri continuano a funzionare come prima. */
+    const unsubModerazione = onSnapshot(
+      collection(db, "moderazione"),
+      (snap) => {
+        const perUid = {};
+        snap.docs.forEach((d) => {
+          perUid[d.id] = d.data() || {};
+        });
+        setUsers((elenco) =>
+          elenco.map((u) => (perUid[u.id] ? { ...u, ...perUid[u.id] } : u))
+        );
+      },
+      (e) => console.warn("Stato moderazione non leggibile:", e?.message)
+    );
+
     return () => {
       unsub();
       unsubContatti();
+      unsubModerazione();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

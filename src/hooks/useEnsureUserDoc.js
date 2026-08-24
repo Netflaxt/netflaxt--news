@@ -19,7 +19,7 @@
 import { useEffect, useRef } from "react";
 import { db } from "../firebase/firebase";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { salvaIndirizzoAccount } from "../utils/datiPrivati";
+import { salvaIndirizzoAccount, migraStatoModerazione } from "../utils/datiPrivati";
 import { sincronizzaVoceClassifica } from "../utils/classifica";
 
 export default function useEnsureUserDoc(user) {
@@ -50,8 +50,6 @@ export default function useEnsureUserDoc(user) {
               photoURL: user.photoURL || null,
               lastSeenAt: serverTimestamp(),
               createdAt: serverTimestamp(),
-              banCount: 0,
-              accountDisabled: false,
             },
             { merge: true }
           );
@@ -75,6 +73,7 @@ export default function useEnsureUserDoc(user) {
            i profili creati prima di questa modifica, senza migrazioni
            da fare a mano. */
         await salvaIndirizzoAccount(user.uid, user.email);
+        await migraStatoModerazione(user.uid);
         await sincronizzaVoceClassifica(user.uid);
       } catch (e) {
         console.warn("useEnsureUserDoc error:", e);

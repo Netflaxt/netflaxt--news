@@ -111,6 +111,25 @@ service cloud.firestore {
       allow delete: if isAdmin() || isSelf(uid);
     }
 
+    // ─── MODERAZIONE (stato sanzioni di ogni utente) ─
+    /* Fuori dal profilo, che è pubblico: motivo della sanzione, numero
+       di ban e messaggi segnalati sono informazioni sul comportamento
+       di una persona e non devono essere consultabili da chiunque.
+       Leggono solo l'interessato e l'amministratore.
+
+       ⚠️ La scrittura resta permessa all'interessato, e non è una
+       svista: senza un server, la sanzione la registra il browser di
+       chi ha commesso la violazione — non c'è nessun altro che possa
+       farlo. Chi ha competenze tecniche può quindi annullarsela.
+       Per impedirlo davvero servirebbe il piano a pagamento di Firebase.
+       Vedi la nota in cima a utils/moderationService.js. */
+    match /moderazione/{uid} {
+      allow get: if isSelf(uid) || isAdmin();
+      allow list: if isAdmin();
+      allow create, update: if isSelf(uid) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
     // ─── CONTATTI (indirizzi email degli account) ──
     /* Tenuti fuori dal profilo, che è pubblico. Li legge l'interessato,
        l'amministratore e il servizio automatico che spedisce le email
