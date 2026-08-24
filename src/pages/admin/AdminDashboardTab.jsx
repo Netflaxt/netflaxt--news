@@ -18,6 +18,7 @@ import {
 } from "firebase/firestore";
 import { totalReactions, REACTION_TYPES } from "../../utils/reactions";
 import { countPendingReports } from "../../utils/reports";
+import { subscribeMatches } from "../../utils/matches";
 
 export default function AdminDashboardTab() {
   const [loading, setLoading] = useState(true);
@@ -29,6 +30,7 @@ export default function AdminDashboardTab() {
     bookmarksCount: 0,
     pendingReports: 0,
     topCommenters: [],
+    matches: [],
   });
 
   // ✨ REAL-TIME: ogni collection (users/articles/predictions/polls) usa
@@ -60,6 +62,16 @@ export default function AdminDashboardTab() {
           }));
         },
         (e) => console.error("Errore listener articles:", e)
+      )
+    );
+
+    /* Serve a sapere QUALE partita è la prossima: i pronostici sono
+       tanti e riferiti a partite diverse, senza il calendario non si
+       potrebbe isolare quelli della gara che sta per giocarsi. */
+    unsubs.push(
+      subscribeMatches(
+        (list) => setData((p) => ({ ...p, matches: list })),
+        () => {}
       )
     );
 
@@ -151,6 +163,47 @@ export default function AdminDashboardTab() {
       return ms >= sevenDaysAgo;
     });
 
+    /* ─── Pronostici sulla prossima partita ───────────────────
+       Stessa scelta della barra in home: se c'è una partita in corso
+       vale quella, altrimenti la prima non ancora giocata. Così il
+       riquadro parla sempre della gara di cui si sta parlando. */
+    const adesso = Date.now();
+    const prossima = data.matches
+      .filter((m) => {
+        const k = m.kickoff?.toMillis?.() ?? 0;
+        return m.status !== "finished" && k > adesso;
+      })
+      .sort((a, b) => (a.kickoff?.toMillis?.() || 0) - (b.kickoff?.toMillis?.() || 0))[0] || null;
+
+    let pronosticiProssima = null;
+    if (prossima) {
+      const suQuestaPartita = data.predictions.filter((p) => p.matchId === prossima.id);
+      const perEsito = { "1": 0, X: 0, "2": 0 };
+      const perRisultato = {};
+      suQuestaPartita.forEach((p) => {
+        if (perEsito[p.outcome] !== undefined) perEsito[p.outcome] += 1;
+        const r = `${p.homeScore}-${p.awayScore}`;
+        perRisultato[r] = (perRisultato[r] || 0) + 1;
+      });
+      const piuGettonato = Object.entries(perRisultato).sort((a, b) => b[1] - a[1])[0];
+      pronosticiProssima = {
+        partita: `${prossima.homeTeam} - ${prossima.awayTeam}`,
+        quando: prossima.kickoff?.toDate?.()
+          ? prossima.kickoff.toDate().toLocaleString("it-IT", {
+              weekday: "short",
+              day: "2-digit",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : "data da confermare",
+        quanti: suQuestaPartita.length,
+        perEsito,
+        risultatoPiuGettonato: piuGettonato ? piuGettonato[0] : null,
+        quantePerQuelRisultato: piuGettonato ? piuGettonato[1] : 0,
+      };
+    }
+
     const evaluatedPreds = data.predictions.filter((p) => p.points != null);
     const exactPreds = evaluatedPreds.filter((p) => p.points === 3).length;
     const correctPreds = evaluatedPreds.filter((p) => p.points === 1).length;
@@ -187,6 +240,7 @@ export default function AdminDashboardTab() {
       exactPreds,
       correctPreds,
       hitRate,
+      pronosticiProssima,
       totalReactionsAll,
       topArticlesByReactions,
       pollsActive: activePolls.length,
@@ -228,6 +282,52 @@ export default function AdminDashboardTab() {
           warn={stats.pendingReports > 0}
         />
       </div>
+
+      {/* Chi ha pronosticato la prossima partita — solo per l'admin.
+          È l'informazione che serve prima della gara: quanti hanno
+          giocato, e cosa si aspettano. Le statistiche generali qui
+          sotto guardano invece tutto lo storico. */}
+      {stats.pronosticiProssima && (
+        <Card
+          title="Pronostici sulla prossima partita"
+          subtitle={`${stats.pronosticiProssima.partita} · ${stats.pronosticiProssima.quando}`}
+        >
+          {stats.pronosticiProssima.quanti === 0 ? (
+            <p className="text-sm text-text-secondary">
+              Ancora nessun pronostico su questa partita.
+            </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <Kpi
+                  label="Hanno pronosticato"
+                  value={stats.pronosticiProssima.quanti}
+                  accent
+                />
+                <Kpi label="Vittoria casa (1)" value={stats.pronosticiProssima.perEsito["1"]} />
+                <Kpi label="Pareggio (X)" value={stats.pronosticiProssima.perEsito.X} />
+                <Kpi label="Vittoria fuori (2)" value={stats.pronosticiProssima.perEsito["2"]} />
+              </div>
+
+              {stats.pronosticiProssima.risultatoPiuGettonato && (
+                <p className="mt-4 text-sm text-text-secondary">
+                  Risultato più pronosticato:{" "}
+                  <span className="font-bold text-text-primary">
+                    {stats.pronosticiProssima.risultatoPiuGettonato}
+                  </span>{" "}
+                  <span className="text-text-muted">
+                    ({stats.pronosticiProssima.quantePerQuelRisultato}{" "}
+                    {stats.pronosticiProssima.quantePerQuelRisultato === 1
+                      ? "tifoso"
+                      : "tifosi"}
+                    )
+                  </span>
+                </p>
+              )}
+            </>
+          )}
+        </Card>
+      )}
 
       {/* Pronostici */}
       <Card title="Pronostici" subtitle="Risultati globali della community">
