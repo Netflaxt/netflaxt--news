@@ -15,15 +15,23 @@
    foto e i punti del quiz. Ogni tifoso scrive solo la propria voce.
    ───────────────────────────────────────────────────────────── */
 import { db } from "../firebase/firebase";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, increment, serverTimestamp } from "firebase/firestore";
 
-/** Aggiorna (o crea) la voce di classifica di un tifoso. */
-export async function aggiornaVoceClassifica(uid, { nome, foto, puntiQuiz } = {}) {
+/** Aggiorna (o crea) la voce di classifica di un tifoso.
+    Con `contaPartita` segna anche che ha appena giocato una partita di
+    quiz: serve a distinguere chi ha giocato e fatto zero punti da chi
+    non ha mai giocato, altrimenti in classifica finirebbe chiunque si
+    sia limitato a registrarsi. */
+export async function aggiornaVoceClassifica(
+  uid,
+  { nome, foto, puntiQuiz, contaPartita } = {}
+) {
   if (!uid) return;
   const dati = { aggiornatoIl: serverTimestamp() };
   if (nome !== undefined) dati.nome = nome || null;
   if (foto !== undefined) dati.foto = foto || null;
   if (puntiQuiz !== undefined) dati.puntiQuiz = Number(puntiQuiz) || 0;
+  if (contaPartita) dati.quizGiocati = increment(1);
   try {
     await setDoc(doc(db, "classifica", uid), dati, { merge: true });
   } catch (e) {
@@ -39,7 +47,7 @@ export async function aggiornaVoceClassifica(uid, { nome, foto, puntiQuiz } = {}
  * uno cambia nome o foto, e quelle dei profili creati prima di questa
  * collection si formano da sole senza migrazioni manuali.
  */
-export async function sincronizzaVoceClassifica(uid) {
+export async function sincronizzaVoceClassifica(uid, { contaPartita } = {}) {
   if (!uid) return;
   try {
     const snap = await getDoc(doc(db, "users", uid));
@@ -49,6 +57,7 @@ export async function sincronizzaVoceClassifica(uid) {
       nome: u.username || u.displayName || null,
       foto: u.photoURL || null,
       puntiQuiz: u.quizPoints || 0,
+      contaPartita,
     });
   } catch (e) {
     console.warn("Classifica non sincronizzata:", e?.message);

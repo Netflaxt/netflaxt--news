@@ -171,10 +171,18 @@ export default function Classifica() {
       const userMeta = {};
       const uByUid = {};
       const quizPoints = {};
+      /* Entra in classifica chi ha punti OPPURE ha giocato almeno una
+         partita di quiz. Prima serviva almeno un punto: chi partecipava
+         e sbagliava tutto non compariva da nessuna parte, come se non
+         avesse giocato. Chi si è solo registrato resta comunque fuori,
+         altrimenti la classifica si riempirebbe di chi non ha mai
+         toccato il quiz. */
       usersRaw.forEach((d) => {
         userMeta[d.id] = d;
         if (d?.username) uByUid[d.id] = d.username;
-        if (d?.quizPoints > 0) quizPoints[d.id] = d.quizPoints;
+        if (d?.quizPoints > 0 || d?.quizGiocati > 0) {
+          quizPoints[d.id] = d.quizPoints || 0;
+        }
       });
 
       // Aggrega punti pronostici per utente
@@ -221,7 +229,9 @@ export default function Classifica() {
       });
 
       Object.entries(quizPoints).forEach(([uid, qp]) => {
-        if (seen.has(uid) || qp <= 0) return;
+        // Chi è già stato inserito dai pronostici non va duplicato.
+        // Il punteggio a zero invece è ammesso: vedi nota sopra.
+        if (seen.has(uid)) return;
         const meta = userMeta[uid] || {};
         merged.push({
           uid,
@@ -272,7 +282,13 @@ export default function Classifica() {
       (snap) => {
         usersRaw = snap.docs.map((d) => {
           const v = d.data();
-          return { id: d.id, username: v.nome, photoURL: v.foto, quizPoints: v.puntiQuiz };
+          return {
+            id: d.id,
+            username: v.nome,
+            photoURL: v.foto,
+            quizPoints: v.puntiQuiz,
+            quizGiocati: v.quizGiocati,
+          };
         });
         recompute();
       },
@@ -508,7 +524,7 @@ export default function Classifica() {
                               </span>
                             )}
                             {b.played === 0 && b.quizPoints === 0 && (
-                              <span className="italic">in attesa…</span>
+                              <span className="italic">ha giocato · 0 punti</span>
                             )}
                           </div>
                         </div>
@@ -566,7 +582,7 @@ export default function Classifica() {
                               <span className="text-accent">solo quiz</span>
                             )}
                             {b.played === 0 && b.quizPoints === 0 && (
-                              <span className="italic">in attesa…</span>
+                              <span className="italic">ha giocato · 0 punti</span>
                             )}
                           </div>
                         </div>

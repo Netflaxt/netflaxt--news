@@ -167,8 +167,12 @@ export async function submitTodayQuiz(uid, answers) {
 
   /* Riporta i punti nella voce pubblica di classifica. Senza, i punti
      appena guadagnati resterebbero invisibili agli altri fino al
-     prossimo accesso (la classifica non legge più il profilo). */
-  if (awardedPoints > 0) await sincronizzaVoceClassifica(uid);
+     prossimo accesso (la classifica non legge più il profilo).
+
+     Va fatto ANCHE con zero punti: è così che la classifica sa che
+     questa persona ha giocato. Chi partecipa e sbaglia tutto compare
+     comunque in fondo, invece di sparire come se non avesse giocato. */
+  await sincronizzaVoceClassifica(uid, { contaPartita: true });
 
   return { score, awardedPoints };
 }
