@@ -101,8 +101,18 @@ export default function AdminDashboardTab() {
       )
     );
 
-    // Pending reports + top commenters: one-shot iniziale + refresh ogni 60s
-    // (i count cambiano poco e la collectionGroup query è più costosa)
+    /* ⚠️ QUESTA PARTE HA FATTO ESAURIRE LA QUOTA DEL DATABASE.
+
+       Rileggeva fino a 500 commenti OGNI 60 SECONDI. Con il pannello
+       admin lasciato aperto sono 30.000 letture all'ora: il limite
+       giornaliero del piano gratuito (50.000) finiva in meno di due
+       ore, e da quel momento TUTTO il sito smetteva di funzionare —
+       partita ferma, email di conferma non spedite, accessi in loop
+       (24/08/2026, sera dell'annuncio).
+
+       Ora si legge una volta sola all'apertura. Sono numeri di
+       riepilogo: chi li guarda ricarica la pagina se li vuole freschi.
+       ⚠️ Non rimettere un intervallo qui. */
     let cancelled = false;
     const loadSlow = async () => {
       try {
@@ -110,7 +120,7 @@ export default function AdminDashboardTab() {
         let topCommenters = [];
         try {
           const commentsSnap = await getDocs(
-            query(collectionGroup(db, "comments"), limit(500))
+            query(collectionGroup(db, "comments"), limit(120))
           );
           const counts = new Map();
           commentsSnap.docs.forEach((d) => {
@@ -140,11 +150,9 @@ export default function AdminDashboardTab() {
       }
     };
     loadSlow();
-    const t = setInterval(loadSlow, 60 * 1000);
 
     return () => {
       cancelled = true;
-      clearInterval(t);
       unsubs.forEach((u) => u && u());
     };
   }, []);
