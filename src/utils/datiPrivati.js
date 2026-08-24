@@ -52,6 +52,46 @@ export async function salvaIndirizzoAccount(uid, email) {
   }
 }
 
+/**
+ * Toglie dal profilo pubblico l'elenco dei dispositivi collegati alle
+ * notifiche.
+ *
+ * Il salvataggio dei nuovi collegamenti era già stato spostato, ma la
+ * copia vecchia restava nel profilo: continuava quindi a dire a chiunque
+ * quanti dispositivi ha una persona e di che tipo, che era esattamente
+ * quello che volevamo evitare (visto con la pagina /controllo il
+ * 24/08/2026).
+ *
+ * Prima di cancellarla la ricopia, se al posto nuovo manca: altrimenti
+ * chi non ha ancora riaperto l'app resterebbe senza notifiche.
+ */
+export async function migraDispositiviNotifiche(uid) {
+  if (!uid) return;
+  try {
+    const profilo = await getDoc(doc(db, "users", uid));
+    const vecchi = profilo.exists() ? profilo.data()?.pushTokens : null;
+    if (!Array.isArray(vecchi) || !vecchi.length) return; // niente da spostare
+
+    const nuovo = await getDoc(doc(db, "tokenDispositivi", uid));
+    const giaPresenti = nuovo.exists() ? nuovo.data()?.pushTokens : null;
+
+    if (!Array.isArray(giaPresenti) || !giaPresenti.length) {
+      await setDoc(
+        doc(db, "tokenDispositivi", uid),
+        {
+          pushTokens: vecchi,
+          ultimoAccesso: profilo.data()?.lastSeenAt || serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+
+    await updateDoc(doc(db, "users", uid), { pushTokens: deleteField() });
+  } catch (e) {
+    console.warn("Dispositivi non spostati:", e?.message);
+  }
+}
+
 /* Campi che il sistema di moderazione teneva nel profilo pubblico. */
 const CAMPI_MODERAZIONE = [
   "banCount",

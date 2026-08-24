@@ -19,7 +19,11 @@
 import { useEffect, useRef } from "react";
 import { db } from "../firebase/firebase";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { salvaIndirizzoAccount, migraStatoModerazione } from "../utils/datiPrivati";
+import {
+  salvaIndirizzoAccount,
+  migraStatoModerazione,
+  migraDispositiviNotifiche,
+} from "../utils/datiPrivati";
 import { sincronizzaVoceClassifica } from "../utils/classifica";
 
 export default function useEnsureUserDoc(user) {
@@ -74,6 +78,7 @@ export default function useEnsureUserDoc(user) {
            da fare a mano. */
         await salvaIndirizzoAccount(user.uid, user.email);
         await migraStatoModerazione(user.uid);
+        await migraDispositiviNotifiche(user.uid);
         await sincronizzaVoceClassifica(user.uid);
       } catch (e) {
         console.warn("useEnsureUserDoc error:", e);
