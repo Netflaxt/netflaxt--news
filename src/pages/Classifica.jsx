@@ -334,7 +334,14 @@ export default function Classifica() {
 
   // Con almeno 3 in classifica mostriamo il podio e la lista parte dalla 4ª
   const showPodium = board.length >= 3;
-  const listEntries = showPodium ? board.slice(3) : board;
+  /* L'elenco contiene TUTTI, compresi i primi tre, e parte dal numero 1.
+     Prima saltava i primi tre perché già sul podio, e la numerazione
+     cominciava da 4: leggendo "Classifica completa" che parte dal
+     quarto posto si ha l'impressione che manchi qualcosa o che l'ordine
+     sia sbagliato. Il podio resta come vetrina, l'elenco come lista
+     completa — è la ripetizione che rende chiaro il quadro, non un
+     doppione da evitare. */
+  const listEntries = board;
 
   return (
     <main className="min-h-screen bg-bg-base text-text-primary relative overflow-hidden">
@@ -477,7 +484,7 @@ export default function Classifica() {
 
             <ul className="space-y-2">
               {listEntries.map((b, i) => {
-                const rank = (showPodium ? 3 : 0) + i + 1;
+                const rank = i + 1;
                 const isMe = user && b.uid === user.uid;
                 const medal =
                   rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : null;
