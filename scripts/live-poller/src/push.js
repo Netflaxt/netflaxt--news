@@ -38,7 +38,7 @@ export async function diagnosticaPush(auth, helpers) {
      STESSO ripiego usato dall'invio vero, altrimenti questa diagnostica
      direbbe "nessun dispositivo" mentre le notifiche partono regolarmente
      dal vecchio percorso: un numero falso è peggio di nessun numero. */
-  const { elenchi: elenchiToken, campoData } = await leggiElenchiToken(auth, runQuery);
+  const elenchiToken = await leggiElenchiToken(auth, runQuery, fval);
   const contatti = await runQuery(auth, {
     from: [{ collectionId: "contattiUtenti" }],
     limit: 2000,
@@ -56,16 +56,12 @@ export async function diagnosticaPush(auth, helpers) {
   let attiviRecenti = 0;
 
   for (const u of elenchiToken) {
-    const arr = u.fields.pushTokens?.arrayValue?.values;
-    if (!Array.isArray(arr) || !arr.length) continue;
+    if (!u.dispositivi.length) continue;
     conToken++;
-    const recente = (fval(u.fields[campoData]) || 0) >= limite;
-    if (recente) attiviRecenti++;
-    for (const v of arr) {
-      const f = v?.mapValue?.fields || {};
-      if (!f.token?.stringValue) continue;
+    if ((u.quando || 0) >= limite) attiviRecenti++;
+    for (const d of u.dispositivi) {
       tokenTotali++;
-      const ua = f.ua?.stringValue || "";
+      const ua = d.ua || "";
       const tipo = /iPhone|iPad|iPod/i.test(ua)
         ? "iPhone/iPad"
         : /Android/i.test(ua)
@@ -78,7 +74,7 @@ export async function diagnosticaPush(auth, helpers) {
       perTipo[tipo] = (perTipo[tipo] || 0) + 1;
       dettagli.push({
         tipo,
-        registratoIl: (f.createdAt?.stringValue || "").slice(0, 16).replace("T", " "),
+        registratoIl: (d.creatoIl || "").slice(0, 16).replace("T", " "),
         // utile per capire se il dispositivo ha aperto l'app installata
         // (su iPhone le notifiche funzionano solo da app in schermata Home)
         browser: /CriOS/i.test(ua) ? "Chrome iOS" : /Safari/i.test(ua) ? "Safari/PWA" : "altro",
@@ -277,18 +273,53 @@ const GIORNI_ATTIVITA = 30;
    Il ripiego sul vecchio percorso serve finché tutti non hanno riaperto
    l'app almeno una volta: senza, chi non l'ha ancora fatto smetterebbe
    di ricevere notifiche senza che nessuno se ne accorga. */
-async function leggiElenchiToken(auth, runQuery) {
-  const nuovi = await runQuery(auth, {
-    from: [{ collectionId: "tokenDispositivi" }],
-    limit: 2000,
-  });
-  if (nuovi.length) return { elenchi: nuovi, campoData: "ultimoAccesso" };
-  const vecchi = await runQuery(auth, { from: [{ collectionId: "users" }], limit: 2000 });
-  return { elenchi: vecchi, campoData: "lastSeenAt" };
+async function leggiElenchiToken(auth, runQuery, fval) {
+  const perUtente = new Map(); // uid -> { uid, dispositivi[], quando }
+
+  const raccogli = (documenti, campoData) => {
+    for (const u of documenti) {
+      const arr = u.fields.pushTokens?.arrayValue?.values;
+      if (!Array.isArray(arr) || !arr.length) continue;
+
+      const voce = perUtente.get(u.id) || { uid: u.id, dispositivi: [], quando: null };
+      const giaVisti = new Set(voce.dispositivi.map((d) => d.token));
+      for (const v of arr) {
+        const f = v?.mapValue?.fields || {};
+        const token = f.token?.stringValue || v?.stringValue;
+        if (!token || giaVisti.has(token)) continue;
+        giaVisti.add(token);
+        voce.dispositivi.push({
+          token,
+          ua: f.ua?.stringValue || "",
+          creatoIl: f.createdAt?.stringValue || "",
+        });
+      }
+      const quando = fval(u.fields[campoData]);
+      if (quando && (!voce.quando || quando > voce.quando)) voce.quando = quando;
+      perUtente.set(u.id, voce);
+    }
+  };
+
+  /* ⚠️ Vanno lette ENTRAMBE e unite, non scelta l'una o l'altra.
+     Il primo tentativo diceva "se la collection nuova è vuota usa la
+     vecchia": appena un solo account si è spostato, la collection non
+     era più vuota e tutti gli altri sono spariti dai destinatari —
+     da 4 dispositivi a 1 (24/08/2026). Quando tutti avranno riaperto
+     l'app la seconda lettura non troverà più nulla e si spegnerà da sé. */
+  raccogli(
+    await runQuery(auth, { from: [{ collectionId: "tokenDispositivi" }], limit: 2000 }),
+    "ultimoAccesso"
+  );
+  raccogli(
+    await runQuery(auth, { from: [{ collectionId: "users" }], limit: 2000 }),
+    "lastSeenAt"
+  );
+
+  return [...perUtente.values()];
 }
 
 async function raccogliToken(auth, runQuery, fval, audience) {
-  const { elenchi, campoData } = await leggiElenchiToken(auth, runQuery);
+  const elenchi = await leggiElenchiToken(auth, runQuery, fval);
 
   const limite = Date.now() - GIORNI_ATTIVITA * 24 * 60 * 60 * 1000;
   // Teniamo anche a chi appartiene ogni token: serve per poterlo
@@ -296,15 +327,9 @@ async function raccogliToken(auth, runQuery, fval, audience) {
   const visti = new Map(); // token -> uid
 
   for (const u of elenchi) {
-    if (audience === "subscribed-only") {
-      const ultimoAccesso = fval(u.fields[campoData]);
-      if (!ultimoAccesso || ultimoAccesso < limite) continue;
-    }
-    const arr = u.fields.pushTokens?.arrayValue?.values;
-    if (!Array.isArray(arr)) continue;
-    for (const v of arr) {
-      const t = v?.mapValue?.fields?.token?.stringValue || v?.stringValue;
-      if (t && !visti.has(t)) visti.set(t, u.id);
+    if (audience === "subscribed-only" && (!u.quando || u.quando < limite)) continue;
+    for (const d of u.dispositivi) {
+      if (!visti.has(d.token)) visti.set(d.token, u.uid);
     }
   }
   return [...visti.entries()].map(([token, uid]) => ({ token, uid }));
@@ -316,9 +341,17 @@ async function raccogliToken(auth, runQuery, fval, audience) {
    spreca chiamate verso destinatari inesistenti. */
 async function rimuoviTokenMorto(auth, uid, tokenMorto, helpers) {
   if (!uid || !tokenMorto) return;
+  /* Va ripulito in ENTRAMBI i posti: chi non ha ancora riaperto l'app
+     ha i collegamenti ancora nel profilo, e toglierli solo dal posto
+     nuovo lascerebbe i morti a intasare tutti gli invii successivi. */
+  await ripuliscine(auth, `tokenDispositivi/${uid}`, tokenMorto, helpers);
+  await ripuliscine(auth, `users/${uid}`, tokenMorto, helpers);
+}
+
+async function ripuliscine(auth, percorso, tokenMorto, helpers) {
   const { leggiDoc, patchDoc } = helpers;
   try {
-    const doc = await leggiDoc(auth, `tokenDispositivi/${uid}`);
+    const doc = await leggiDoc(auth, percorso);
     const arr = doc?.fields?.pushTokens?.arrayValue?.values;
     if (!Array.isArray(arr)) return;
 
@@ -338,7 +371,7 @@ async function rimuoviTokenMorto(auth, uid, tokenMorto, helpers) {
     }
     if (tenuti.length === arr.length) return; // niente da cambiare
 
-    await patchDoc(auth, `tokenDispositivi/${uid}`, { pushTokens: tenuti });
+    await patchDoc(auth, percorso, { pushTokens: tenuti });
   } catch (e) {
     console.error("pulizia token fallita:", e.message);
   }

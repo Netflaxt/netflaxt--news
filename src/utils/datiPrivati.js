@@ -73,18 +73,31 @@ export async function migraDispositiviNotifiche(uid) {
     if (!Array.isArray(vecchi) || !vecchi.length) return; // niente da spostare
 
     const nuovo = await getDoc(doc(db, "tokenDispositivi", uid));
-    const giaPresenti = nuovo.exists() ? nuovo.data()?.pushTokens : null;
+    const giaPresenti = nuovo.exists() ? nuovo.data()?.pushTokens || [] : [];
 
-    if (!Array.isArray(giaPresenti) || !giaPresenti.length) {
-      await setDoc(
-        doc(db, "tokenDispositivi", uid),
-        {
-          pushTokens: vecchi,
-          ultimoAccesso: profilo.data()?.lastSeenAt || serverTimestamp(),
-        },
-        { merge: true }
-      );
+    /* ⚠️ UNIONE, non "copia solo se vuoto".
+       Il primo tentativo saltava la copia quando il posto nuovo era già
+       popolato. Ma il browser vi registra il PROPRIO dispositivo appena
+       si apre il sito, quindi al momento della migrazione c'era già una
+       voce — e le altre, quelle degli altri dispositivi della stessa
+       persona, sono state cancellate senza essere trasferite
+       (24/08/2026: da 4 dispositivi a 1). */
+    const uniti = [...giaPresenti];
+    const conosciuti = new Set(uniti.map((t) => t?.token).filter(Boolean));
+    for (const t of vecchi) {
+      if (!t?.token || conosciuti.has(t.token)) continue;
+      conosciuti.add(t.token);
+      uniti.push(t);
     }
+
+    await setDoc(
+      doc(db, "tokenDispositivi", uid),
+      {
+        pushTokens: uniti,
+        ultimoAccesso: profilo.data()?.lastSeenAt || serverTimestamp(),
+      },
+      { merge: true }
+    );
 
     await updateDoc(doc(db, "users", uid), { pushTokens: deleteField() });
   } catch (e) {
