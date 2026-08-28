@@ -166,6 +166,15 @@ export default {
         return json({ formazioni: await prova(`fixtures/lineups?fixture=${fid}`) });
       }
 
+      /* Toglie le pagelle dalla home prima della loro scadenza
+         naturale. Non cancella nulla: i voti restano, smettono solo di
+         comparire. */
+      if (q.get("chiudiPagelle")) {
+        const auth = await getAccessToken(env);
+        await patchDoc(auth, `pagelle/${q.get("chiudiPagelle")}`, { chiuse: true });
+        return json({ chiuse: q.get("chiudiPagelle") });
+      }
+
       /* Apre le pagelle di una partita già finita. Serve per la prima
          volta e come rimedio se, a fine gara, la raccolta dei giocatori
          non fosse riuscita. */
@@ -181,7 +190,7 @@ export default {
           env,
           id,
           fixture,
-          { casa: fval(m.fields.homeTeam), ospite: fval(m.fields.awayTeam) },
+          { casa: fval(m.fields.homeTeam), ospite: fval(m.fields.awayTeam), kickoff: fval(m.fields.kickoff) },
           `${fval(m.fields.homeScore) ?? ""} - ${fval(m.fields.awayScore) ?? ""}`
         );
         return json({ partita: id, ...esito });
@@ -401,7 +410,7 @@ async function poll(env, authCondiviso) {
       fval(m.fields.liveAway) ?? 0,
       readEvents(m.fields.events),
       "tempo-scaduto",
-      { casa: fval(m.fields.homeTeam), ospite: fval(m.fields.awayTeam) },
+      { casa: fval(m.fields.homeTeam), ospite: fval(m.fields.awayTeam), kickoff: fval(m.fields.kickoff) },
       env,
       fval(m.fields.liveFixtureId)
     );
@@ -487,7 +496,7 @@ async function poll(env, authCondiviso) {
     // Se l'API dichiara la partita conclusa mentre è ancora in lista,
     // finalizziamo subito con i dati definitivi.
     if (FINISHED.includes(short)) {
-      return await finalize(auth, m.id, home, away, events, "api", { casa, ospite }, env, fixtureId);
+      return await finalize(auth, m.id, home, away, events, "api", { casa, ospite, kickoff: fval(m.fields.kickoff) }, env, fixtureId);
     }
 
     await patchMatch(auth, m.id, fields);
@@ -516,7 +525,7 @@ async function poll(env, authCondiviso) {
     const events = readEvents(m.fields.events);
     return await finalize(
       auth, m.id, home, away, events, "uscita-dalle-live",
-      { casa: fval(m.fields.homeTeam), ospite: fval(m.fields.awayTeam) },
+      { casa: fval(m.fields.homeTeam), ospite: fval(m.fields.awayTeam), kickoff: fval(m.fields.kickoff) },
       env,
       fval(m.fields.liveFixtureId)
     );
@@ -556,7 +565,17 @@ async function finalize(auth, matchId, home, away, events, origine, squadre = {}
      devono poter far saltare il risultato. */
   let pagelle = "non aperte";
   try {
-    if (env && fixtureId) pagelle = await apriPagelle(auth, env, matchId, fixtureId, squadre, `${home} - ${away}`);
+    if (env && fixtureId) {
+      pagelle = await apriPagelle(
+        auth,
+        env,
+        matchId,
+        fixtureId,
+        squadre,
+        `${home} - ${away}`,
+        squadre.kickoff || null
+      );
+    }
   } catch (e) {
     pagelle = `errore: ${e.message}`.slice(0, 150);
     console.error("Pagelle non aperte:", e.message);
@@ -625,7 +644,7 @@ async function recuperaPagelle(env, auth) {
       env,
       m.id,
       fixture,
-      { casa: fval(m.fields.homeTeam), ospite: fval(m.fields.awayTeam) },
+      { casa: fval(m.fields.homeTeam), ospite: fval(m.fields.awayTeam), kickoff: fval(m.fields.kickoff) },
       `${fval(m.fields.homeScore) ?? ""} - ${fval(m.fields.awayScore) ?? ""}`
     );
     await patchMatch(auth, m.id, { pagelleDaAprire: false });
@@ -642,7 +661,15 @@ async function recuperaPagelle(env, auth) {
    un voto a chi non è sceso in campo. */
 const ORDINE_RUOLI = { G: 0, D: 1, M: 2, F: 3 };
 
-async function apriPagelle(auth, env, matchId, fixtureId, squadre = {}, risultato = "") {
+async function apriPagelle(
+  auth,
+  env,
+  matchId,
+  fixtureId,
+  squadre = {},
+  risultato = "",
+  partitaIl = null
+) {
   const teamId = String(env.TEAM_ID || "487");
   const res = await fetch(
     `https://v3.football.api-sports.io/fixtures/players?fixture=${fixtureId}`,
@@ -686,6 +713,11 @@ async function apriPagelle(auth, env, matchId, fixtureId, squadre = {}, risultat
   await patchDoc(auth, `pagelle/${matchId}`, {
     partita: `${squadre.casa || "?"} - ${squadre.ospite || "?"}`,
     risultato,
+    /* L'orario della partita, non quello di adesso: è da qui che il
+       sito conta il giorno di permanenza in home. Se le pagelle vengono
+       aperte in ritardo, la scadenza resta ancorata alla gara. */
+    partitaIl: partitaIl ? new Date(partitaIl) : new Date(),
+    chiuse: false,
     giocatori,
     aperteIl: new Date(),
     /* Somme e conteggi dei voti stanno qui, non sparsi: la media è una

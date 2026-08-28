@@ -39,11 +39,14 @@ import {
 
 export const SENZA_VOTO = "sv";
 
-/* Dopo quanto la scheda smette di comparire. Serve solo a non lasciare
-   in home una partita di un mese fa durante una sosta: nel ritmo
-   normale del campionato le pagelle vengono sostituite da quelle della
-   giornata dopo molto prima di scadere. */
-const GIORNI_IN_HOME = 7;
+/* Quanto restano in home dopo la partita.
+
+   ⚠️ Si conta dall'orario della PARTITA, non da quando il documento è
+   stato creato. Sono due cose diverse: se le pagelle vengono aperte in
+   ritardo — perché il servizio partite non rispondeva, o perché le si
+   riapre a mano — contare dalla creazione le terrebbe in home per un
+   giorno intero a distanza di una settimana dalla gara. */
+const ORE_IN_HOME = 24;
 
 /**
  * Segue le pagelle più recenti, quelle che vanno mostrate in home.
@@ -61,9 +64,14 @@ export function seguiUltimePagelle(cb, onErr) {
       const d = snap.docs[0];
       if (!d) return cb(null);
       const dati = { id: d.id, ...d.data() };
-      const aperteIl = dati.aperteIl?.toMillis?.() ?? 0;
-      const scadute =
-        aperteIl && Date.now() - aperteIl > GIORNI_IN_HOME * 24 * 60 * 60 * 1000;
+
+      // Chiuse a mano dal pannello: valgono più di qualsiasi scadenza
+      if (dati.chiuse === true) return cb(null);
+
+      /* Il ripiego su `aperteIl` serve solo alle pagelle aperte prima
+         che salvassimo l'orario della partita. */
+      const quando = dati.partitaIl?.toMillis?.() ?? dati.aperteIl?.toMillis?.() ?? 0;
+      const scadute = quando && Date.now() - quando > ORE_IN_HOME * 60 * 60 * 1000;
       cb(scadute ? null : dati);
     },
     (e) => {
