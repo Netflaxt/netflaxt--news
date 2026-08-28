@@ -137,6 +137,56 @@ export default {
         });
       }
 
+      /* Verifica quali dati sui giocatori il piano gratuito di
+         API-Football ci lascia davvero leggere. Serve a progettare le
+         pagelle su ciò che esiste, invece che su ciò che si spera.
+         Consuma richieste: usare solo quando serve. */
+      if (q.get("diag") === "giocatori" && q.get("fixture")) {
+        const fid = q.get("fixture");
+        const prova = async (percorso) => {
+          try {
+            const res = await fetch(`https://v3.football.api-sports.io/${percorso}`, {
+              headers: { "x-apisports-key": env.APIFOOTBALL_KEY },
+            });
+            const d = await res.json();
+            const err = d?.errors;
+            const haErrori = err && (Array.isArray(err) ? err.length : Object.keys(err).length);
+            return {
+              stato: res.status,
+              errori: haErrori ? err : null,
+              risultati: Array.isArray(d.response) ? d.response.length : 0,
+              assaggio: JSON.stringify(d.response?.[0] || null).slice(0, 700),
+            };
+          } catch (e) {
+            return { errore: e.message };
+          }
+        };
+        const quale = q.get('quale') || 'lineups';
+        if (quale === 'players') return json({ giocatoriConMinuti: await prova(`fixtures/players?fixture=${fid}`) });
+        return json({ formazioni: await prova(`fixtures/lineups?fixture=${fid}`) });
+      }
+
+      /* Apre le pagelle di una partita già finita. Serve per la prima
+         volta e come rimedio se, a fine gara, la raccolta dei giocatori
+         non fosse riuscita. */
+      if (q.get("apriPagelle")) {
+        const auth = await getAccessToken(env);
+        const id = q.get("apriPagelle");
+        const m = await leggiDoc(auth, `matches/${id}`);
+        if (!m?.fields) return json({ errore: "partita non trovata" }, 404);
+        const fixture = fval(m.fields.liveFixtureId);
+        if (!fixture) return json({ errore: "questa partita non ha un collegamento al servizio" }, 400);
+        const esito = await apriPagelle(
+          auth,
+          env,
+          id,
+          fixture,
+          { casa: fval(m.fields.homeTeam), ospite: fval(m.fields.awayTeam) },
+          `${fval(m.fields.homeScore) ?? ""} - ${fval(m.fields.awayScore) ?? ""}`
+        );
+        return json({ partita: id, ...esito });
+      }
+
       if (q.get("diag") === "push") {
         const auth = await getAccessToken(env);
         return json(await diagnosticaPush(auth, { runQuery, fval }));
@@ -259,6 +309,13 @@ async function eseguiTutto(env) {
     out.newsletter = { errore: e.message };
   }
 
+  /* Riprova ad aprire le pagelle rimaste indietro (vedi finalize). */
+  try {
+    out.pagelleRecuperate = await recuperaPagelle(env, auth);
+  } catch (e) {
+    out.pagelleRecuperate = { errore: e.message };
+  }
+
   /* Lascia traccia dell'ultima esecuzione. Serve ad accorgersi se il
      Worker si è fermato: se questa data è vecchia di ore, qualcosa non
      va (il pannello admin la mostra). Senza, un blocco resterebbe
@@ -344,7 +401,9 @@ async function poll(env, authCondiviso) {
       fval(m.fields.liveAway) ?? 0,
       readEvents(m.fields.events),
       "tempo-scaduto",
-      { casa: fval(m.fields.homeTeam), ospite: fval(m.fields.awayTeam) }
+      { casa: fval(m.fields.homeTeam), ospite: fval(m.fields.awayTeam) },
+      env,
+      fval(m.fields.liveFixtureId)
     );
   }
 
@@ -428,7 +487,7 @@ async function poll(env, authCondiviso) {
     // Se l'API dichiara la partita conclusa mentre è ancora in lista,
     // finalizziamo subito con i dati definitivi.
     if (FINISHED.includes(short)) {
-      return await finalize(auth, m.id, home, away, events, "api", { casa, ospite });
+      return await finalize(auth, m.id, home, away, events, "api", { casa, ospite }, env, fixtureId);
     }
 
     await patchMatch(auth, m.id, fields);
@@ -455,10 +514,12 @@ async function poll(env, authCondiviso) {
     const home = fval(m.fields.liveHome) ?? 0;
     const away = fval(m.fields.liveAway) ?? 0;
     const events = readEvents(m.fields.events);
-    return await finalize(auth, m.id, home, away, events, "uscita-dalle-live", {
-      casa: fval(m.fields.homeTeam),
-      ospite: fval(m.fields.awayTeam),
-    });
+    return await finalize(
+      auth, m.id, home, away, events, "uscita-dalle-live",
+      { casa: fval(m.fields.homeTeam), ospite: fval(m.fields.awayTeam) },
+      env,
+      fval(m.fields.liveFixtureId)
+    );
   }
   /* La chiusura per tempo scaduto sta più in alto, prima della chiamata
      all'API: a quel punto la partita è finita di sicuro e non serve
@@ -473,7 +534,7 @@ async function poll(env, authCondiviso) {
    Scrive il risultato definitivo, chiude lo stato live e assegna i
    punti ai pronostici (stessa logica di scoreMatch lato sito:
    3 punti al risultato esatto, 1 all'esito 1X2). ─────────────── */
-async function finalize(auth, matchId, home, away, events, origine, squadre = {}) {
+async function finalize(auth, matchId, home, away, events, origine, squadre = {}, env, fixtureId) {
   const fields = {
     homeScore: home,
     awayScore: away,
@@ -489,15 +550,153 @@ async function finalize(auth, matchId, home, away, events, origine, squadre = {}
 
   const punti = await scorePredictions(auth, matchId, home, away);
 
-  // Notifica con il risultato finale
+  /* Apre le pagelle: raccoglie chi ha davvero giocato e prepara il
+     documento su cui i tifosi voteranno. Se fallisce, la partita resta
+     comunque chiusa correttamente — le pagelle sono un di più, non
+     devono poter far saltare il risultato. */
+  let pagelle = "non aperte";
+  try {
+    if (env && fixtureId) pagelle = await apriPagelle(auth, env, matchId, fixtureId, squadre, `${home} - ${away}`);
+  } catch (e) {
+    pagelle = `errore: ${e.message}`.slice(0, 150);
+    console.error("Pagelle non aperte:", e.message);
+    /* Lascia un segno da recuperare più tardi. Il servizio partite ha
+       anche un limite al MINUTO, oltre a quello giornaliero: se la
+       richiesta cade proprio nell'istante sbagliato, senza questo segno
+       le pagelle non si aprirebbero mai più — la partita è finita e
+       non viene più interrogata. */
+    try {
+      await patchMatch(auth, matchId, { pagelleDaAprire: true });
+    } catch {}
+  }
+
   const casa = squadre.casa || "Casa";
   const ospite = squadre.ospite || "Ospite";
+
+  /* Una notifica sola, non due: il fischio finale è il momento in cui la
+     voglia di dire la propria è al massimo, e aggiungerne una seconda
+     poco dopo darebbe solo fastidio. */
+  const invito = pagelle && pagelle.giocatori
+    ? " Vota le pagelle dei biancocelesti."
+    : " Guarda il tabellino e i punti dei pronostici.";
   await notifica(auth, {
     title: "🏁 Fine partita",
-    body: `${casa} ${home} - ${away} ${ospite}. Guarda il tabellino e i punti dei pronostici.`,
+    body: `${casa} ${home} - ${away} ${ospite}.${invito}`,
+    url: "/",
   });
 
-  return { finalizzata: matchId, risultato: `${home}-${away}`, eventi: events?.length ?? 0, pronosticiValutati: punti, origine };
+  return {
+    finalizzata: matchId,
+    risultato: `${home}-${away}`,
+    eventi: events?.length ?? 0,
+    pronosticiValutati: punti,
+    pagelle,
+    origine,
+  };
+}
+
+/* Riapre le pagelle di una partita in cui la raccolta era fallita.
+   Una sola per giro: non c'è fretta, e ogni tentativo costa una
+   richiesta al servizio partite. */
+async function recuperaPagelle(env, auth) {
+  const rimaste = await runQuery(auth, {
+    from: [{ collectionId: "matches" }],
+    where: {
+      fieldFilter: {
+        field: { fieldPath: "pagelleDaAprire" },
+        op: "EQUAL",
+        value: { booleanValue: true },
+      },
+    },
+    limit: 1,
+  });
+  if (!rimaste.length) return "niente da recuperare";
+
+  const m = rimaste[0];
+  const fixture = fval(m.fields.liveFixtureId);
+  if (!fixture) {
+    await patchMatch(auth, m.id, { pagelleDaAprire: false });
+    return "partita senza collegamento al servizio: rinuncio";
+  }
+
+  try {
+    const esito = await apriPagelle(
+      auth,
+      env,
+      m.id,
+      fixture,
+      { casa: fval(m.fields.homeTeam), ospite: fval(m.fields.awayTeam) },
+      `${fval(m.fields.homeScore) ?? ""} - ${fval(m.fields.awayScore) ?? ""}`
+    );
+    await patchMatch(auth, m.id, { pagelleDaAprire: false });
+    return { partita: m.id, ...esito };
+  } catch (e) {
+    return `ancora non riuscito: ${e.message}`.slice(0, 120);
+  }
+}
+
+/* ── Pagelle: chi ha giocato davvero ───────────────────────────
+   Una sola richiesta al servizio partite, a gara finita. Restituisce
+   minuti giocati, ruolo e se il giocatore era titolare o subentrato:
+   chi ha zero minuti resta fuori dall'elenco, perché non si può dare
+   un voto a chi non è sceso in campo. */
+const ORDINE_RUOLI = { G: 0, D: 1, M: 2, F: 3 };
+
+async function apriPagelle(auth, env, matchId, fixtureId, squadre = {}, risultato = "") {
+  const teamId = String(env.TEAM_ID || "487");
+  const res = await fetch(
+    `https://v3.football.api-sports.io/fixtures/players?fixture=${fixtureId}`,
+    { headers: { "x-apisports-key": env.APIFOOTBALL_KEY } }
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const dati = await res.json();
+
+  const err = dati?.errors;
+  if (err && (Array.isArray(err) ? err.length : Object.keys(err).length)) {
+    throw new Error(JSON.stringify(err).slice(0, 120));
+  }
+
+  const squadra = (dati.response || []).find((s) => String(s.team?.id) === teamId);
+  if (!squadra) throw new Error("squadra non trovata nella risposta");
+
+  const giocatori = [];
+  for (const voce of squadra.players || []) {
+    const st = voce.statistics?.[0]?.games || {};
+    const minuti = Number(st.minutes ?? 0);
+    if (!minuti) continue; // in panchina tutta la partita: niente voto
+    giocatori.push({
+      id: String(voce.player?.id ?? ""),
+      nome: voce.player?.name || "",
+      ruolo: st.position || "",
+      minuti,
+      titolare: st.substitute !== true,
+      numero: Number(st.number ?? 0),
+      /* Il voto calcolato dal servizio: si mostra accanto a quello della
+         curva, ed è proprio lo scarto fra i due a far discutere. */
+      votoAlgoritmo: st.rating ? Number(st.rating) : null,
+    });
+  }
+  if (!giocatori.length) throw new Error("nessun giocatore con minuti giocati");
+
+  giocatori.sort((a, b) => {
+    const r = (ORDINE_RUOLI[a.ruolo] ?? 9) - (ORDINE_RUOLI[b.ruolo] ?? 9);
+    return r !== 0 ? r : b.minuti - a.minuti;
+  });
+
+  await patchDoc(auth, `pagelle/${matchId}`, {
+    partita: `${squadre.casa || "?"} - ${squadre.ospite || "?"}`,
+    risultato,
+    giocatori,
+    aperteIl: new Date(),
+    /* Somme e conteggi dei voti stanno qui, non sparsi: la media è una
+       divisione fra due numeri già pronti, senza dover rileggere tutti
+       i voti uno per uno. */
+    somme: {},
+    conteggi: {},
+    senzaVoto: {},
+  });
+
+  return { giocatori: giocatori.length };
 }
 
 /* Esito 1X2 dal punteggio */

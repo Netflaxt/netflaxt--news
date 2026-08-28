@@ -2,6 +2,7 @@ import NewsletterCTA from "../components/NewsletterCTA";
 import InstallAppCard from "../components/InstallAppCard";
 import PronosticiCTA from "../components/PronosticiCTA";
 import NextMatchBar from "../components/NextMatchBar";
+import PagelleCard from "../components/PagelleCard";
 import { SkeletonArticleCard } from "../components/Skeleton";
 import BookmarkButton from "../components/BookmarkButton";
 import PollWidget from "../components/PollWidget";
@@ -240,6 +241,13 @@ export default function Home() {
 
       {/* ═══════════════ BARRA PROSSIMA PARTITA ═══════════════ */}
       <NextMatchBar />
+
+      {/* ═══════════════ PAGELLE DELLA PARTITA ════════════════
+          Compare da sola dopo il fischio finale, sparisce quando hai
+          votato o quando comincia la partita successiva. */}
+      <div className="mt-10">
+        <PagelleCard />
+      </div>
 
       {/* ═══════════════════ ULTIMI ARTICOLI ═══════════════════ */}
       <section className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-24">

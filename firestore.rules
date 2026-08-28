@@ -144,6 +144,35 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ─── PAGELLE (voti dei tifosi ai giocatori) ────
+    /* Il documento della partita contiene chi ha giocato e due totali
+       per giocatore — somma dei voti e numero di votanti — da cui esce
+       la media. Sono pubblici: la media è il senso della cosa.
+
+       L'elenco dei giocatori lo scrive il servizio automatico a fine
+       gara, con credenziali proprie: da qui nessuno può cambiarlo.
+       Chi è collegato può solo aggiornare i totali, ed è quello che
+       fa votando. */
+    match /pagelle/{partita} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (isSignedIn()
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['somme', 'conteggi', 'senzaVoto']));
+
+      /* I voti di una persona stanno in un documento che porta il suo
+         nome: votare due volte sovrascrive invece di raddoppiare, e
+         nessuno può scrivere al posto di un altro.
+         Restano leggibili solo all'interessato: la media è pubblica,
+         le pagelle del singolo no. */
+      match /voti/{uid} {
+        allow read: if isSelf(uid) || isAdmin();
+        allow create, update: if isSelf(uid);
+        allow delete: if isAdmin();
+      }
+    }
+
     // ─── CONTATTI (indirizzi email degli account) ──
     /* Tenuti fuori dal profilo, che è pubblico. Li legge l'interessato,
        l'amministratore e il servizio automatico che spedisce le email
