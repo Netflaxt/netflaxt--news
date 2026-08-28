@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/prepara-seo.mjs",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "seo": "node scripts/prepara-seo.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.0",

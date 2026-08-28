@@ -1,0 +1,63 @@
+name: Pubblica il sito ogni notte
+
+# PERCHÉ ESISTE
+# La mappa per i motori di ricerca e le pagine degli articoli — quelle
+# che portano titolo e descrizione già scritti nel codice, senza dover
+# eseguire il sito — vengono generate al momento della pubblicazione,
+# leggendo gli articoli dal database.
+#
+# Ma gli articoli si scrivono dal pannello, non pubblicando il sito.
+# Senza questa ripubblicazione notturna, un articolo scritto oggi non
+# entrerebbe nella mappa finché qualcuno non ripubblica a mano — e
+# Google lo troverebbe settimane dopo, o mai.
+#
+# Il sito non cambia: cambia solo ciò che i motori di ricerca leggono.
+
+on:
+  schedule:
+    # 03:30 UTC = 05:30 in Italia. Di notte non c'è nessuno sul sito,
+    # e gli articoli della giornata precedente sono tutti pubblicati.
+    - cron: "30 3 * * *"
+  # Bottone per lanciarla a mano quando serve subito
+  workflow_dispatch:
+
+# Due pubblicazioni sovrapposte si darebbero fastidio a vicenda
+concurrency:
+  group: pubblica-sito
+  cancel-in-progress: false
+
+jobs:
+  pubblica:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scarica il progetto
+        uses: actions/checkout@v4
+
+      - name: Prepara Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Installa le dipendenze
+        run: npm ci
+
+      - name: Compila il sito e genera mappa e pagine articolo
+        run: npm run build
+
+      # Se la generazione non ha prodotto nulla, meglio fermarsi che
+      # pubblicare un sito senza mappa sovrascrivendo quella buona.
+      - name: Controlla che la mappa ci sia
+        run: |
+          test -f dist/sitemap.xml || { echo "mappa non generata"; exit 1; }
+          RIGHE=$(grep -c "<loc>" dist/sitemap.xml)
+          echo "indirizzi nella mappa: $RIGHE"
+          test "$RIGHE" -ge 8 || { echo "mappa troppo corta, mi fermo"; exit 1; }
+
+      - name: Pubblica su Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: netflaxt-news
+          channelId: live
