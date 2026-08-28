@@ -42,8 +42,44 @@ jobs:
       - name: Installa le dipendenze
         run: npm ci
 
+      # Le credenziali per caricare foto e video stanno nel file .env, che
+      # NON viene caricato su GitHub (ed è giusto così). Qui arrivano dai
+      # segreti del repository.
+      #
+      # ⚠️ Senza questo controllo la compilazione riesce lo stesso e
+      # pubblica un sito in cui nessuno può più caricare un'immagine:
+      # né foto profilo, né immagini in chat, né foto e video negli
+      # articoli. È successo davvero il 29/08/2026. Meglio non
+      # pubblicare che pubblicare un sito monco.
+      - name: Controlla che le credenziali di caricamento ci siano
+        env:
+          NOME: ${{ secrets.VITE_CLOUDINARY_CLOUD_NAME }}
+          PRESET: ${{ secrets.VITE_CLOUDINARY_UPLOAD_PRESET }}
+        run: |
+          if [ -z "$NOME" ] || [ -z "$PRESET" ]; then
+            echo "Mancano i segreti VITE_CLOUDINARY_CLOUD_NAME e/o VITE_CLOUDINARY_UPLOAD_PRESET."
+            echo "Senza, il sito verrebbe pubblicato senza la possibilita' di caricare file."
+            exit 1
+          fi
+          echo "credenziali di caricamento presenti"
+
       - name: Compila il sito e genera mappa e pagine articolo
+        env:
+          VITE_CLOUDINARY_CLOUD_NAME: ${{ secrets.VITE_CLOUDINARY_CLOUD_NAME }}
+          VITE_CLOUDINARY_UPLOAD_PRESET: ${{ secrets.VITE_CLOUDINARY_UPLOAD_PRESET }}
         run: npm run build
+
+      # Il controllo prima della compilazione dice che i valori c'erano;
+      # questo dice che sono davvero finiti dentro al sito.
+      - name: Controlla che il sito compilato sappia caricare i file
+        env:
+          NOME: ${{ secrets.VITE_CLOUDINARY_CLOUD_NAME }}
+        run: |
+          grep -rqF "$NOME" dist/assets || {
+            echo "il sito compilato non contiene le credenziali di caricamento, mi fermo"
+            exit 1
+          }
+          echo "credenziali presenti nel sito compilato"
 
       # Se la generazione non ha prodotto nulla, meglio fermarsi che
       # pubblicare un sito senza mappa sovrascrivendo quella buona.

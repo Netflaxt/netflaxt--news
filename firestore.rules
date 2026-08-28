@@ -26,6 +26,21 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    // ─── CONFIGURAZIONE DEL SITO ───────────────────
+    /* `config/site` porta lo stato del sito: normale, in manutenzione o
+       non disponibile. Lo legge OGNI visitatore, anche chi non ha un
+       account, perché è quello che fa comparire l'avviso in home.
+
+       ⚠️ Questo blocco mancava, e il blocco che nega tutto in fondo al
+       file rifiutava la scrittura: dal pannello, cambiare lo stato del
+       sito rispondeva "serve il permesso sulle regole". Era rimasto
+       fuori quando queste regole hanno sostituito quelle scritte a mano
+       in console (29/08/2026). */
+    match /config/{documento} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // ─── ARTICOLI ──────────────────────────────────
     match /articles/{articleId} {
       allow read: if true;
