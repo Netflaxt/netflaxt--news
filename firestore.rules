@@ -76,6 +76,23 @@ service cloud.firestore {
       }
     }
 
+    /* ─── COMMENTI DI TUTTI GLI ARTICOLI INSIEME ───
+       Il riepilogo del pannello ("chi commenta di più") interroga i
+       commenti di TUTTI gli articoli in una sola ricerca.
+
+       ⚠️ Firestore autorizza quel tipo di ricerca solo con una regola
+       scritta col percorso jolly. Quella qui sopra, annidata dentro
+       /articles, concede gli stessi identici permessi ma NON vale:
+       la ricerca veniva rifiutata e l'elenco dei più attivi restava
+       vuoto in silenzio, perché AdminDashboardTab ingoia l'errore.
+
+       Solo lettura, e solo all'amministratore: leggere un commento
+       alla volta resta pubblico grazie alla regola dentro /articles.
+       Qui si concede una cosa sola, che serve a una schermata sola. */
+    match /{percorso=**}/comments/{commentId} {
+      allow read: if isAdmin();
+    }
+
     // ─── UTENTI ────────────────────────────────────
     match /users/{uid} {
       /* Il singolo profilo resta leggibile: serve a mostrare nome e
