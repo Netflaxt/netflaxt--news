@@ -274,6 +274,54 @@ export default {
         return json({ cancellata: q.get("cancellaPartita"), esito: ok });
       }
 
+      /* Mostra CHE COSA risponde davvero API-Football.
+         Serviva durante Lazio-Genoa (30/08/2026): la diretta si era
+         fermata e il servizio diceva soltanto "risposta non attendibile",
+         senza il motivo. Con 34 chiamate su 100 il limite giornaliero non
+         c'entrava, e senza vedere la risposta si poteva solo indovinare. */
+      if (q.get("diag") === "api") {
+        const res = await fetch("https://v3.football.api-sports.io/fixtures?live=all", {
+          headers: { "x-apisports-key": env.APIFOOTBALL_KEY },
+        });
+        const testo = await res.text();
+        let dati = null;
+        try { dati = JSON.parse(testo); } catch {}
+        const teamId = env.TEAM_ID || "487";
+        const elenco = Array.isArray(dati?.response) ? dati.response : null;
+        const lazio = elenco?.find(
+          (fx) => String(fx.teams?.home?.id) === teamId || String(fx.teams?.away?.id) === teamId
+        );
+        /* I contatori residui viaggiano nelle intestazioni, non nel corpo.
+           Sono l'unico modo per distinguere "finite le richieste di oggi"
+           da "troppe richieste in questo minuto": due problemi diversi,
+           con due rimedi diversi. */
+        return json({
+          http: res.status,
+          restanti_oggi: res.headers.get("x-ratelimit-requests-remaining"),
+          totale_giornaliero: res.headers.get("x-ratelimit-requests-limit"),
+          restanti_questo_minuto: res.headers.get("x-ratelimit-remaining"),
+          tetto_al_minuto: res.headers.get("x-ratelimit-limit"),
+          errori: dati?.errors ?? "(campo assente)",
+          partiteInDiretta: elenco ? elenco.length : "(response non e un elenco)",
+          risposta: elenco ? undefined : testo.slice(0, 400),
+          squadraCercata: teamId,
+          lazioTrovata: lazio
+            ? {
+                fixture: lazio.fixture?.id,
+                fase: lazio.fixture?.status?.short,
+                minuto: lazio.fixture?.status?.elapsed,
+                recupero: lazio.fixture?.status?.extra,
+                gol: `${lazio.goals?.home}-${lazio.goals?.away}`,
+                casa: lazio.teams?.home?.name,
+                ospite: lazio.teams?.away?.name,
+              }
+            : null,
+          primeInDiretta: (elenco || []).slice(0, 5).map(
+            (fx) => `${fx.teams?.home?.name} (${fx.teams?.home?.id}) - ${fx.teams?.away?.name} (${fx.teams?.away?.id})`
+          ),
+        });
+      }
+
       if (q.get("riapri")) {
         const auth = await getAccessToken(env);
         const idPartita = q.get("riapri");
@@ -802,22 +850,55 @@ async function contaChiamataApi(auth) {
   return { oggi };
 }
 
+const attendi = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function fetchLiveLazio(env) {
   const teamId = env.TEAM_ID || "487";
-  const res = await fetch("https://v3.football.api-sports.io/fixtures?live=all", {
-    headers: { "x-apisports-key": env.APIFOOTBALL_KEY },
-  });
-  if (!res.ok) throw new Error(`API-Football HTTP ${res.status}`);
-  const data = await res.json();
 
-  /* `errors` è [] quando va tutto bene, un oggetto con dentro il motivo
-     quando c'è un problema (quota finita, chiave non valida, piano non
-     abilitato). In quel caso la risposta non dice nulla sulla partita. */
-  const errori = data?.errors;
-  const haErrori = errori && (Array.isArray(errori) ? errori.length > 0 : Object.keys(errori).length > 0);
-  if (haErrori || !Array.isArray(data.response)) {
-    console.error("API-Football non attendibile:", JSON.stringify(errori).slice(0, 200));
-    return { partita: null, attendibile: false };
+  /* Il tetto è di 10 richieste al minuto, e ne facciamo una ogni due:
+     sulla carta non dovremmo sfiorarlo mai. Nei fatti, durante
+     Lazio-Genoa (30/08/2026) quasi metà dei giri veniva rifiutata per
+     "troppe richieste in questo minuto", e la diretta restava ferma
+     anche cinque minuti — con il minuto sullo schermo che intanto
+     continuava a salire da solo, mostrando ai tifosi un dato che
+     nessuno aveva verificato.
+
+     Non so ancora da dove arrivino quelle raffiche. Ma un rifiuto per
+     fretta NON consuma il credito giornaliero (verificato: 79 richieste
+     su 100 ancora disponibili dopo decine di rifiuti), quindi
+     riprovare costa quasi nulla e recupera il giro invece di buttarlo.
+     Le pause sono attese, non calcolo: non pesano sul Worker. */
+  /* Le pause fra un tentativo e l'altro. Tre tentativi in 27 secondi non
+     bastavano: il rifiuto dura più a lungo. Il giro successivo parte fra
+     due minuti, quindi si può insistere per quasi un minuto senza
+     accavallarsi con nessuno. */
+  const PAUSE = [15000, 20000, 25000];
+  let data = null;
+  let errori = null;
+  for (let tentativo = 1; tentativo <= 4; tentativo++) {
+    const res = await fetch("https://v3.football.api-sports.io/fixtures?live=all", {
+      headers: { "x-apisports-key": env.APIFOOTBALL_KEY },
+    });
+    if (!res.ok) throw new Error(`API-Football HTTP ${res.status}`);
+    data = await res.json();
+
+    /* `errors` è [] quando va tutto bene, un oggetto con dentro il motivo
+       quando c'è un problema (quota finita, chiave non valida, piano non
+       abilitato). In quel caso la risposta non dice nulla sulla partita. */
+    errori = data?.errors;
+    const haErrori =
+      errori && (Array.isArray(errori) ? errori.length > 0 : Object.keys(errori).length > 0);
+    if (!haErrori && Array.isArray(data.response)) break;
+
+    /* Solo la fretta si recupera aspettando. Se il credito è finito o la
+       chiave non va, riprovare peggiora e basta. */
+    const soloFretta = errori && typeof errori === "object" && "rateLimit" in errori;
+    if (!soloFretta || tentativo === 4) {
+      console.error("API-Football non attendibile:", JSON.stringify(errori).slice(0, 200));
+      return { partita: null, attendibile: false };
+    }
+    console.warn(`API-Football ha rifiutato per fretta, riprovo (${tentativo}/4)`);
+    await attendi(PAUSE[tentativo - 1]);
   }
 
   const partita =
