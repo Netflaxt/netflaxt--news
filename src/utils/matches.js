@@ -216,8 +216,32 @@ function sanitizeEvents(events) {
 }
 
 /**
+ * Aggiorna SOLO il tabellino di una partita in corso.
+ *
+ * ⚠️ Esiste perché il tabellino (gol, cartellini, infortuni) vive dentro
+ * l'editor del risultato, e quell'editor chiamava sempre finalizeMatch.
+ * Risultato: aggiungere un infortunio al 40' dichiarava la partita
+ * finita e mandava in valutazione i pronostici. Successo davvero
+ * durante Lazio-Genoa del 30/08/2026, a partita in corso.
+ *
+ * Qui si scrivono gli eventi e nient'altro: niente `status`, niente
+ * `scored`, nessun punteggio ai pronostici. Il servizio automatico
+ * continua a seguire la partita e la chiuderà lui al fischio finale.
+ */
+export async function saveMatchEvents(id, events = []) {
+  if (!id) throw new Error("id mancante");
+  await updateDoc(doc(db, "matches", id), {
+    events: sanitizeEvents(events),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
  * Finalizza il risultato di una partita (con eventuale tabellino) e
  * assegna i punti ai pronostici.
+ *
+ * ⚠️ Chiude la partita. Durante una gara in corso si usa
+ * `saveMatchEvents`, che aggiorna il tabellino senza chiuderla.
  */
 export async function finalizeMatch(match, homeScore, awayScore, events = []) {
   if (!match?.id) throw new Error("Match mancante");

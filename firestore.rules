@@ -225,10 +225,16 @@ service cloud.firestore {
       /* In aggiornamento va verificato ANCHE il proprietario di quello
          che c'è già. Controllando solo i dati in arrivo, chiunque poteva
          sovrascrivere il pronostico di un altro semplicemente mettendoci
-         il proprio identificativo. */
-      allow update: if isSignedIn()
-        && resource.data.uid == request.auth.uid
-        && request.resource.data.uid == request.auth.uid;
+         il proprio identificativo.
+
+         ⚠️ L'amministratore deve poter scrivere i punti sui pronostici
+         di tutti: è quello che fa la chiusura manuale di una partita.
+         Senza, `scoreMatch` falliva a metà — la partita restava segnata
+         come finita e nessuno riceveva i punti (30/08/2026). */
+      allow update: if isAdmin()
+        || (isSignedIn()
+            && resource.data.uid == request.auth.uid
+            && request.resource.data.uid == request.auth.uid);
       allow delete: if isAdmin();
     }
 

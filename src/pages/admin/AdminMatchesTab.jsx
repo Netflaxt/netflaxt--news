@@ -13,6 +13,7 @@ import {
   updateMatch,
   deleteMatch,
   finalizeMatch,
+  saveMatchEvents,
   setMatchLock,
   setLiveState,
   clearLiveState,
@@ -305,7 +306,24 @@ export default function AdminMatchesTab({ onToast }) {
     }
   };
 
+  /* Attrezzo da collaudo: scrive valori finti per vedere come appare una
+     diretta. Serve PRIMA che la partita cominci.
+
+     ⚠️ Su una partita già iniziata era un disastro: sovrascriveva minuto
+     e punteggio veri con 2° tempo, 67', 1-0 fissi. È quello che i tifosi
+     hanno visto durante Lazio-Genoa del 30/08/2026, mentre si giocava il
+     primo tempo. Da qui il blocco: dal fischio d'inizio in poi comanda
+     il servizio automatico, non la simulazione. */
   const toggleSimLive = async (m) => {
+    const iniziata = m.kickoff ? new Date(m.kickoff).getTime() <= Date.now() : false;
+    if (!m.live && iniziata) {
+      onToast &&
+        onToast(
+          "Partita già iniziata: la simulazione sovrascriverebbe i dati veri",
+          "danger"
+        );
+      return;
+    }
     setBusy(m.id);
     try {
       if (m.live) {
@@ -692,6 +710,12 @@ function ResultEditor({ match, onClose, onSaved }) {
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [confermaChiusura, setConfermaChiusura] = useState(false);
+
+  /* Partita in corso: o il servizio automatico la sta seguendo, o è
+     segnata come live. In questo stato l'editor aggiorna il tabellino
+     e non tocca lo stato della partita. */
+  const inCorso = match.live === true || match.status === "live";
 
   const addEvent = () =>
     setEvents((p) => [
@@ -708,7 +732,42 @@ function ResultEditor({ match, onClose, onSaved }) {
     setAway(s.away);
   };
 
+  /* Salva il tabellino SENZA chiudere la partita.
+     ⚠️ Prima questo bottone chiamava sempre finalizeMatch: aggiungere un
+     infortunio a partita in corso la dichiarava finita e mandava in
+     valutazione i pronostici (Lazio-Genoa, 30/08/2026). Ora, finché la
+     gara è in corso, si aggiorna e basta — a chiuderla ci pensa il
+     servizio automatico al fischio finale, con i dati veri. */
   const save = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      if (inCorso) {
+        await saveMatchEvents(match.id, events.map(({ _id, ...e }) => e));
+        onSaved && onSaved("Tabellino aggiornato · la partita resta in corso", "success");
+      } else {
+        const res = await finalizeMatch(
+          match,
+          home,
+          away,
+          events.map(({ _id, ...e }) => e)
+        );
+        onSaved &&
+          onSaved(
+            `Risultato salvato · ${res.scored} pronostic${res.scored === 1 ? "o" : "i"} valutat${res.scored === 1 ? "o" : "i"}`,
+            "success"
+          );
+      }
+      onClose();
+    } catch (e) {
+      setError(e.message || "Errore nel salvataggio");
+      setBusy(false);
+    }
+  };
+
+  /* Chiusura manuale, esplicita e solo su richiesta. Serve quando il
+     servizio automatico non ce la fa (API muta, partita sospesa). */
+  const chiudiOra = async () => {
     setBusy(true);
     setError("");
     try {
@@ -720,13 +779,14 @@ function ResultEditor({ match, onClose, onSaved }) {
       );
       onSaved &&
         onSaved(
-          `Risultato salvato · ${res.scored} pronostic${res.scored === 1 ? "o" : "i"} valutat${res.scored === 1 ? "o" : "i"}`,
+          `Partita chiusa · ${res.scored} pronostic${res.scored === 1 ? "o" : "i"} valutat${res.scored === 1 ? "o" : "i"}`,
           "success"
         );
       onClose();
     } catch (e) {
-      setError(e.message || "Errore nel salvataggio");
+      setError(e.message || "Errore nella chiusura");
       setBusy(false);
+      setConfermaChiusura(false);
     }
   };
 
@@ -815,14 +875,38 @@ function ResultEditor({ match, onClose, onSaved }) {
         </div>
 
         {/* Footer */}
-        <div className="p-5 border-t border-border flex justify-end gap-2">
-          <AdminButton onClick={onClose} disabled={busy} variant="ghost" icon="x">
-            Annulla
-          </AdminButton>
-          <AdminButton onClick={save} disabled={busy} variant="save" icon={busy ? undefined : "check"}>
-            {busy && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-            Salva risultato e assegna punti
-          </AdminButton>
+        <div className="p-5 border-t border-border flex flex-col gap-3">
+          {inCorso && (
+            <p className="text-xs text-text-secondary leading-relaxed">
+              <span className="font-bold text-accent">Partita in corso.</span>{" "}
+              Il salvataggio aggiorna il tabellino e basta: il risultato e i
+              punti restano in mano al servizio automatico, che chiude la
+              partita al fischio finale.
+            </p>
+          )}
+          <div className="flex justify-end gap-2 flex-wrap">
+            <AdminButton onClick={onClose} disabled={busy} variant="ghost" icon="x">
+              Annulla
+            </AdminButton>
+            {inCorso &&
+              (confermaChiusura ? (
+                <AdminButton onClick={chiudiOra} disabled={busy} variant="danger" icon="check">
+                  Confermi? Chiude e assegna i punti
+                </AdminButton>
+              ) : (
+                <AdminButton
+                  onClick={() => setConfermaChiusura(true)}
+                  disabled={busy}
+                  variant="ghost"
+                >
+                  Chiudi la partita a mano
+                </AdminButton>
+              ))}
+            <AdminButton onClick={save} disabled={busy} variant="save" icon={busy ? undefined : "check"}>
+              {busy && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+              {inCorso ? "Salva tabellino" : "Salva risultato e assegna punti"}
+            </AdminButton>
+          </div>
         </div>
       </div>
     </div>,
