@@ -16,6 +16,19 @@
 import React, { useEffect, useState } from "react";
 
 const STALE_MS = 15 * 60 * 1000; // oltre 15 min senza aggiornamenti → non live
+
+/* Oltre questo, l'ultimo dato non è più abbastanza fresco per essere
+   mostrato come certo.
+
+   ⚠️ Serve a non mentire. Il poller scrive ogni 2 minuti; quando si
+   ferma, questo badge continuava a mostrare l'ultimo stato con la stessa
+   sicurezza di un dato appena arrivato. Durante Lazio-Genoa (30/08/2026)
+   ha mostrato "Fine 1º tempo" per minuti mentre il secondo tempo era già
+   in corso: il dato aveva quasi cinque minuti, ma niente lo diceva.
+   Il minuto non scappa (l'interpolazione è tappata a 3), il problema era
+   la sicurezza con cui veniva presentato. */
+const SOSPETTO_MS = 3 * 60 * 1000;
+
 const IN_PLAY = ["1H", "2H", "ET"];
 
 function updatedMs(match) {
@@ -51,20 +64,32 @@ function interp(updated, now) {
   return Math.min(3, Math.max(0, Math.floor((now - updated) / 60000)));
 }
 
-/** Testo + tono dello stato live. */
+/** Testo + tono dello stato live. `fermo` = l'ultimo dato è vecchio. */
 export function liveLabel(s, now) {
   const code = s.status;
-  if (code === "HT" || code === "BT") return { text: "Fine 1º tempo", tone: "warn", dot: false };
-  if (code === "P") return { text: "Rigori", tone: "live", dot: true };
-  if (["FT", "AET", "PEN"].includes(code)) return { text: "Fine partita", tone: "muted", dot: false };
-  // In gioco
+  const fermo = s.updated ? now - s.updated > SOSPETTO_MS : false;
+
+  if (code === "HT" || code === "BT")
+    return { text: "Fine 1º tempo", tone: "warn", dot: false, fermo };
+  if (code === "P") return { text: "Rigori", tone: "live", dot: !fermo, fermo };
+  if (["FT", "AET", "PEN"].includes(code))
+    return { text: "Fine partita", tone: "muted", dot: false, fermo: false };
+
+  /* In gioco. Quando il dato è vecchio il pallino smette di pulsare e il
+     tono passa a spento: chi guarda deve capire che sta vedendo l'ultima
+     notizia certa, non il presente. */
   const k = interp(s.updated, now);
   if (s.extra != null) {
     const base = s.minute != null ? s.minute : code === "1H" ? 45 : 90;
-    return { text: `${base}+${s.extra + k}'`, tone: "live", dot: true };
+    return {
+      text: `${base}+${s.extra + k}'`,
+      tone: fermo ? "muted" : "live",
+      dot: !fermo,
+      fermo,
+    };
   }
   const m = (s.minute ?? 0) + k;
-  return { text: `${m}'`, tone: "live", dot: true };
+  return { text: `${m}'`, tone: fermo ? "muted" : "live", dot: !fermo, fermo };
 }
 
 const TONE = {
@@ -82,11 +107,17 @@ export default function LiveBadge({ match, className = "" }) {
 
   const s = getLiveState(match);
   if (!s) return null;
-  const { text, tone, dot } = liveLabel(s, now);
+  const { text, tone, dot, fermo } = liveLabel(s, now);
+  const daQuanto = s.updated ? Math.round((now - s.updated) / 60000) : null;
 
   return (
     <span
       className={`inline-flex items-center gap-1.5 font-bold uppercase tracking-wider ${TONE[tone]} ${className}`}
+      title={
+        fermo
+          ? `Ultimo aggiornamento ricevuto ${daQuanto} minuti fa: la partita è in corso, ma questo dato potrebbe non essere l'ultimo.`
+          : undefined
+      }
     >
       {dot && (
         <>
@@ -98,6 +129,9 @@ export default function LiveBadge({ match, className = "" }) {
         </>
       )}
       <span className="tabular-nums">{text}</span>
+      {/* Detto a parole, non solo col colore: il pallino spento da solo
+          non basta a far capire che il dato è vecchio. */}
+      {fermo && <span className="normal-case tracking-normal opacity-80">· in ritardo</span>}
     </span>
   );
 }
