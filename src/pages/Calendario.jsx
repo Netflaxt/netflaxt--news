@@ -4,7 +4,8 @@
    e risultati passati. Dati live da Firestore `matches`.
    ───────────────────────────────────────────────────────────── */
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
+import SerieAStandings from "../components/SerieAStandings";
 import { subscribeMatches } from "../utils/matches";
 import MatchCard from "../components/MatchCard";
 import MatchPrediction from "../components/MatchPrediction";
@@ -13,6 +14,8 @@ import { setSEO, resetSEO } from "../utils/seo";
 import { SkeletonMatchCard } from "../components/Skeleton";
 
 export default function Calendario() {
+  const [searchParams] = useSearchParams();
+  const showStandings = searchParams.get("vista") === "classifica";
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
@@ -26,7 +29,7 @@ export default function Calendario() {
     setSEO({
       title: "Calendario partite",
       description:
-        "Calendario e risultati della Lazio: prossime partite, orari e pronostici della community Netflaxt News.",
+        "Calendario e risultati della Lazio, classifica della Serie A aggiornata e pronostici della community Netflaxt News.",
       type: "website",
     });
     const unsub = subscribeMatches(
@@ -89,10 +92,20 @@ export default function Calendario() {
           </Link>
         </div>
         <p className="mt-2 text-text-secondary text-sm mb-10">
-          Prossime partite, orari e risultati. Pronostica e sfida gli altri tifosi.
+          Partite della Lazio, risultati e classifica della Serie A.
         </p>
 
-        {loading ? (
+        <nav aria-label="Sezioni del calendario" className="flex flex-wrap gap-3 mb-8">
+          {[{ to: "/calendario", label: "Partite Lazio", active: !showStandings },
+            { to: "/calendario?vista=classifica", label: "Classifica Serie A", active: showStandings }].map(({ to, label, active }) => (
+            <Link key={to} to={to} aria-current={active ? "page" : undefined}
+              className={`rounded-lg border px-4 py-3 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-accent ${active ? "bg-accent/10 border-accent/40 text-accent" : "bg-bg-surface border-border text-text-secondary hover:text-text-primary"}`}>
+              {label}
+            </Link>
+          ))}
+        </nav>
+
+        {showStandings ? <SerieAStandings /> : loading ? (
           <div className="space-y-3 py-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <SkeletonMatchCard key={i} />

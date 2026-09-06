@@ -132,6 +132,7 @@ documentato in `src/utils/moderationService.js`.
 | Cloudinary | **tutte** le immagini e i video caricati | `VITE_CLOUDINARY_*` (GitHub + `.env`) |
 | API-Football | diretta partite e pagelle | `APIFOOTBALL_KEY` (Cloudflare) |
 | TheSportsDB | calendario Serie A | opzionale, ripiego su chiave pubblica |
+| Sofascore | classifica Serie A, modulo ufficiale gratuito incorporato | nessuno |
 | Resend | newsletter | `RESEND_KEY` (Cloudflare) |
 | Cloudflare | Worker della diretta | `ADMIN_KEY` (Cloudflare) |
 
@@ -320,6 +321,18 @@ politica sugli script, usare `npx.cmd`.
 ---
 
 ## 10. Dove siamo e cosa resta
+
+**Classifica Serie A (06/09/2026):** `src/components/SerieAStandings.jsx`
+incorpora il modulo ufficiale di Sofascore in Home e in
+`/calendario?vista=classifica`. Non usa il Worker, Firestore o API-Football.
+La fonte gestisce gli aggiornamenti, anche durante le gare; non promettere
+assenza di ritardi né usare il caricamento del riquadro come prova del live.
+Al cambio di campionato aggiornare `SEASON` e `SEASON_ID` dal generatore
+https://widgets.sofascore.com/config/standings (attuale: 2026/27, 95836).
+Non confondere la classifica Serie A con quella dei tifosi su `/classifica`.
+Per verificare: tutte le 20 squadre, scorrimento in Home, scheda Partite Lazio,
+tema chiaro/scuro e schermo piccolo. La fonte deve restare attribuita e il
+collegamento esterno permette di consultarla se il riquadro è bloccato.
 
 **Fatto e funzionante:** sito online su dominio proprio con certificato,
 notifiche push, newsletter, approvazione degli accessi via email, calendario

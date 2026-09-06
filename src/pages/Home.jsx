@@ -3,6 +3,7 @@ import InstallAppCard from "../components/InstallAppCard";
 import PronosticiCTA from "../components/PronosticiCTA";
 import NextMatchBar from "../components/NextMatchBar";
 import PagelleCard from "../components/PagelleCard";
+import SerieAStandings from "../components/SerieAStandings";
 import { SkeletonArticleCard } from "../components/Skeleton";
 import BookmarkButton from "../components/BookmarkButton";
 import PollWidget from "../components/PollWidget";
@@ -420,6 +421,10 @@ export default function Home() {
           </Link>
         </div>
       </section>
+
+      <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-12">
+        <SerieAStandings compact />
+      </div>
 
       {/* ═══════════════════ QUIZ LAZIO DEL GIORNO ═══════════════════ */}
       <section className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-12">
