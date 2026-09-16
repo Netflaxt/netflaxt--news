@@ -322,6 +322,15 @@ politica sugli script, usare `npx.cmd`.
 
 ## 10. Dove siamo e cosa resta
 
+**Foto delle pagelle (16/09/2026):** la rosa non è scritta a mano: il Worker
+inserisce nelle pagelle soltanto chi ha giocato davvero. Le foto sono invece in
+`public/giocatori/` e l'associazione dei nomi è in
+`src/utils/fotoGiocatori.js`. Gudmundsson e Diogo Leite sono presenti;
+Romagnoli è stato rimosso. `scripts/verifica-foto-pagelle.mjs` controlla durante
+ogni build che tutti i ritratti dichiarati esistano, che non ci siano file
+scollegati e che i nomi abbreviati dei nuovi giocatori portino alla foto giusta.
+Non sostituire questo controllo con un elenco fisso di convocati nel sito.
+
 **Classifica Serie A (06/09/2026):** `src/components/SerieAStandings.jsx`
 incorpora il modulo ufficiale di Sofascore in Home e in
 `/calendario?vista=classifica`. Non usa il Worker, Firestore o API-Football.

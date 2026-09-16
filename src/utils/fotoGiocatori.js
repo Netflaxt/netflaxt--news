@@ -24,6 +24,12 @@ const ECCEZIONI = {
   "dele-bashiru": "dele-bashiru",
   bashiru: "dele-bashiru",
   bordon: "bordon",
+  "diogo leite": "diogo-leite",
+  "diogo-leite": "diogo-leite",
+  leite: "diogo-leite",
+  /* La grafia islandese con ð viene semplificata dal servizio in modi
+     diversi: entrambe devono portare alla stessa foto. */
+  gumundsson: "gudmundsson",
   "nuno tavares": "tavares",
 };
 
@@ -31,12 +37,18 @@ const ECCEZIONI = {
    non esistono: senza questo elenco ogni giocatore senza foto
    produrrebbe un errore di caricamento visibile in console. */
 const DISPONIBILI = new Set([
-  "belahyane", "bordon", "cancellieri", "cataldi", "dele-bashiru", "dia",
+  "belahyane", "bordon", "cancellieri", "cataldi", "dele-bashiru", "dia", "diogo-leite",
   "doekhi", "floriani-mussolini", "frattesi", "gigot", "isaksen", "lazzari",
   "mandas", "marusic", "motta", "noslin", "patric", "pedraza", "pellegrini",
-  "pinamonti", "provstgaard", "przyborek", "ratkov", "romagnoli", "rovella",
-  "sutalo", "tavares", "taylor", "zaccagni",
+  "pinamonti", "provstgaard", "przyborek", "ratkov", "rovella",
+  "sutalo", "tavares", "taylor", "zaccagni", "gudmundsson",
 ]);
+
+/* Usato dal controllo di compilazione: restituisce una copia, così il test
+   può verificare i file senza poter modificare l'elenco del sito. */
+export function fotoDisponibili() {
+  return [...DISPONIBILI];
+}
 
 /** Toglie accenti e punteggiatura, per confrontare nomi scritti in modi diversi. */
 function normalizza(testo) {
